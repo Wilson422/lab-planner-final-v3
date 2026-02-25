@@ -1,14 +1,124 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>lab-planner</title>
-    <script type="module" crossorigin src="./assets/index-DOrluBrE.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BE1YzaR5.css">
-  </head>
-  <body>
-    <div id="root"></div>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Planner Pro</title>
+    <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg-main: #f8fafc;
+            --border: #e2e8f0;
+            --text-muted: #64748b;
+        }
+        body { margin: 0; font-family: sans-serif; background: var(--bg-main); overflow: hidden; }
+        .app { display: grid; grid-template-columns: 250px 1fr 250px; height: 100vh; }
+        .sidebar { background: white; border-right: 1px solid var(--border); padding: 20px; }
+        .canvas-container { position: relative; background: #eee; }
+        .inspector { background: white; border-left: 1px solid var(--border); padding: 20px; }
+        .item { padding: 10px; border: 1px solid #ddd; margin-bottom: 10px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
+        .item:hover { border-color: var(--primary); background: #f0f7ff; }
+        #container { width: 100%; height: 100%; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="sidebar">
+            <h3>實驗設備</h3>
+            <div class="item" onclick="addItem('實驗桌', 120, 60, '#3b82f6')"><i data-lucide="square"></i> 實驗桌</div>
+            <div class="item" onclick="addItem('排煙櫃', 100, 80, '#ef4444')"><i data-lucide="wind"></i> 排煙櫃</div>
+            <div class="item" onclick="addItem('水槽', 50, 50, '#06b6d4')"><i data-lucide="droplets"></i> 水槽</div>
+            <div class="item" onclick="addItem('中央台', 180, 90, '#8b5cf6')"><i data-lucide="layout"></i> 中央台</div>
+            <button class="btn" onclick="exportImg()">匯出規劃圖</button>
+        </div>
+        <div class="canvas-container">
+            <div id="container"></div>
+        </div>
+        <div class="inspector" id="inspector">
+            <h3>物件屬性</h3>
+            <div id="prop-controls" style="display:none">
+                <p>名稱: <span id="p-name"></span></p>
+                <button class="btn" style="background:#ef4444" onclick="deleteSelected()">刪除</button>
+            </div>
+            <p id="empty-hint">請選擇畫布上的物件</p>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const stage = new Konva.Stage({
+            container: 'container',
+            width: window.innerWidth - 500,
+            height: window.innerHeight
+        });
+        const layer = new Konva.Layer();
+        stage.add(layer);
+
+        const tr = new Konva.Transformer();
+        layer.add(tr);
+
+        let selectedNode = null;
+
+        function addItem(name, w, h, color) {
+            const rect = new Konva.Rect({
+                x: 50, y: 50,
+                width: w, height: h,
+                fill: color,
+                stroke: '#1e293b',
+                strokeWidth: 2,
+                draggable: true,
+                name: name
+            });
+            
+            rect.on('click tap', () => selectNode(rect));
+            rect.on('dragmove', () => {
+                rect.x(Math.round(rect.x() / 20) * 20);
+                rect.y(Math.round(rect.y() / 20) * 20);
+            });
+
+            layer.add(rect);
+            selectNode(rect);
+        }
+
+        function selectNode(node) {
+            selectedNode = node;
+            tr.nodes([node]);
+            document.getElementById('prop-controls').style.display = 'block';
+            document.getElementById('empty-hint').style.display = 'none';
+            document.getElementById('p-name').innerText = node.name();
+            layer.draw();
+        }
+
+        stage.on('click tap', (e) => {
+            if (e.target === stage) {
+                tr.nodes([]);
+                selectedNode = null;
+                document.getElementById('prop-controls').style.display = 'none';
+                document.getElementById('empty-hint').style.display = 'block';
+                layer.draw();
+            }
+        });
+
+        function deleteSelected() {
+            if (selectedNode) {
+                selectedNode.destroy();
+                tr.nodes([]);
+                selectedNode = null;
+                layer.draw();
+            }
+        }
+
+        function exportImg() {
+            tr.nodes([]);
+            const dataURL = stage.toDataURL();
+            const link = document.createElement('a');
+            link.download = 'lab-design.png';
+            link.href = dataURL;
+            link.click();
+        }
+    </script>
+</body>
 </html>
