@@ -1,94 +1,396 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Planner Pro</title>
+    <title>LabCAD Web Pro - 實驗室規劃系統</title>
+    <!-- 圖形引擎 -->
     <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+    <!-- 3D 引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- 圖示 -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root {
-            --primary: #2563eb;
-            --bg-main: #f8fafc;
-            --border: #e2e8f0;
-            --text-muted: #64748b;
+            --bg-dark: #0f172a;
+            --bg-sidebar: #1e293b;
+            --primary: #3b82f6;
+            --accent: #10b981;
+            --border: #334155;
+            --text: #f1f5f9;
         }
-        body { margin: 0; font-family: sans-serif; background: var(--bg-main); overflow: hidden; }
-        .app { display: grid; grid-template-columns: 250px 1fr 250px; height: 100vh; }
-        .sidebar { background: white; border-right: 1px solid var(--border); padding: 20px; }
-        .canvas-container { position: relative; background: #eee; }
-        .inspector { background: white; border-left: 1px solid var(--border); padding: 20px; }
-        .item { padding: 10px; border: 1px solid #ddd; margin-bottom: 10px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 10px; }
-        .item:hover { border-color: var(--primary); background: #f0f7ff; }
-        #container { width: 100%; height: 100%; background: white; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 20px 20px; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 300px 1fr 280px;
+            height: 100vh;
+        }
+
+        /* 側邊欄 */
+        .sidebar {
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            background: #111827;
+            font-weight: bold;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tool-section {
+            padding: 15px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .tool-title {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .item-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .item {
+            background: #334155;
+            border: 1px solid transparent;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 0.85rem;
+            transition: 0.2s;
+        }
+
+        .item:hover {
+            border-color: var(--primary);
+            background: #475569;
+        }
+
+        .item i {
+            display: block;
+            margin-bottom: 5px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* 畫布區 */
+        .canvas-area {
+            position: relative;
+            background: #000;
+        }
+
+        #container {
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        .toolbar {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 8px 15px;
+            border-radius: 50px;
+            display: flex;
+            gap: 15px;
+            border: 1px solid var(--border);
+            z-index: 100;
+        }
+
+        .tool-btn {
+            background: none;
+            border: none;
+            color: #cbd5e1;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .tool-btn:hover {
+            color: white;
+            background: #334155;
+        }
+
+        .tool-btn.active {
+            color: var(--primary);
+        }
+
+        /* 3D 視圖層 */
+        #three-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            z-index: 50;
+        }
+
+        /* 屬性欄 */
+        .inspector {
+            background: var(--bg-sidebar);
+            border-left: 1px solid var(--border);
+            padding: 20px;
+        }
+
+        .btn-view-3d {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-view-3d:hover {
+            opacity: 0.9;
+        }
+
+        .prop-row {
+            margin-bottom: 15px;
+        }
+
+        .prop-label {
+            display: block;
+            font-size: 0.75rem;
+            color: #94a3b8;
+            margin-bottom: 5px;
+        }
+
+        input {
+            width: 100%;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
     <div class="app">
-        <div class="sidebar">
-            <h3>實驗設備</h3>
-            <div class="item" onclick="addItem('實驗桌', 120, 60, '#3b82f6')"><i data-lucide="square"></i> 實驗桌</div>
-            <div class="item" onclick="addItem('排煙櫃', 100, 80, '#ef4444')"><i data-lucide="wind"></i> 排煙櫃</div>
-            <div class="item" onclick="addItem('水槽', 50, 50, '#06b6d4')"><i data-lucide="droplets"></i> 水槽</div>
-            <div class="item" onclick="addItem('中央台', 180, 90, '#8b5cf6')"><i data-lucide="layout"></i> 中央台</div>
-            <button class="btn" onclick="exportImg()">匯出規劃圖</button>
-        </div>
-        <div class="canvas-container">
-            <div id="container"></div>
-        </div>
-        <div class="inspector" id="inspector">
-            <h3>物件屬性</h3>
-            <div id="prop-controls" style="display:none">
-                <p>名稱: <span id="p-name"></span></p>
-                <button class="btn" style="background:#ef4444" onclick="deleteSelected()">刪除</button>
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i data-lucide="layout"></i> LabCAD Web Pro
             </div>
-            <p id="empty-hint">請選擇畫布上的物件</p>
-        </div>
+            
+            <div class="tool-section">
+                <div class="tool-title">區域規劃</div>
+                <div class="item-grid">
+                    <div class="item" onclick="addZone('規劃區域', 400, 300, 'rgba(59, 130, 246, 0.1)')">
+                        <i data-lucide="box-select"></i> 新增區域
+                    </div>
+                </div>
+            </div>
+
+            <div class="tool-section">
+                <div class="tool-title">儀器設備</div>
+                <div class="item-grid">
+                    <div class="item" onclick="addDevice('實驗桌', 120, 60, 80, '#3b82f6')"><i data-lucide="square"></i> 實驗桌</div>
+                    <div class="item" onclick="addDevice('排煙櫃', 100, 80, 200, '#ef4444')"><i data-lucide="wind"></i> 排煙櫃</div>
+                    <div class="item" onclick="addDevice('自動分析儀', 140, 80, 150, '#10b981')"><i data-lucide="cpu"></i> 分析儀</div>
+                    <div class="item" onclick="addDevice('離心機', 60, 60, 60, '#f59e0b')"><i data-lucide="refresh-cw"></i> 離心機</div>
+                </div>
+            </div>
+
+            <div style="margin-top: auto; padding: 20px;">
+                <button class="btn-view-3d" id="toggle-3d" onclick="toggle3D()">
+                    <i data-lucide="box"></i> 查看 3D 預覽
+                </button>
+            </div>
+        </aside>
+
+        <main class="canvas-area">
+            <div class="toolbar">
+                <button class="tool-btn" title="指針"><i data-lucide="mouse-pointer-2"></i></button>
+                <button class="tool-btn" onclick="deleteSelected()"><i data-lucide="trash-2"></i></button>
+                <button class="tool-btn" onclick="exportData()"><i data-lucide="save"></i></button>
+            </div>
+            
+            <div id="container"></div>
+            <div id="three-container"></div>
+        </main>
+
+        <aside class="inspector">
+            <h3>物件屬性</h3>
+            <div id="inspector-content">
+                <p style="color: #64748b;">請選擇物件以編輯</p>
+            </div>
+        </aside>
     </div>
 
     <script>
         lucide.createIcons();
+
+        // 2D 畫布設定
         const stage = new Konva.Stage({
             container: 'container',
-            width: window.innerWidth - 500,
-            height: window.innerHeight
+            width: window.innerWidth - 580,
+            height: window.innerHeight,
         });
+
         const layer = new Konva.Layer();
         stage.add(layer);
 
-        const tr = new Konva.Transformer();
+        const tr = new Konva.Transformer({
+            rotateAnchorOffset: 30,
+            enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+        });
         layer.add(tr);
 
         let selectedNode = null;
+        let elements = [];
 
-        function addItem(name, w, h, color) {
-            const rect = new Konva.Rect({
-                x: 50, y: 50,
-                width: w, height: h,
-                fill: color,
-                stroke: '#1e293b',
-                strokeWidth: 2,
+        // 繪製背景網格
+        function drawGrid() {
+            const gridLayer = new Konva.Layer();
+            const step = 20;
+            for (let i = 0; i < stage.width(); i += step) {
+                gridLayer.add(new Konva.Line({
+                    points: [i, 0, i, stage.height()],
+                    stroke: '#1e293b',
+                    strokeWidth: 0.5,
+                }));
+            }
+            for (let j = 0; j < stage.height(); j += step) {
+                gridLayer.add(new Konva.Line({
+                    points: [0, j, stage.width(), j],
+                    stroke: '#1e293b',
+                    strokeWidth: 0.5,
+                }));
+            }
+            stage.add(gridLayer);
+            gridLayer.moveToBottom();
+        }
+        drawGrid();
+
+        // 新增區域功能
+        function addZone(name, w, h, color) {
+            const group = new Konva.Group({
+                x: 100, y: 100,
                 draggable: true,
-                name: name
-            });
-            
-            rect.on('click tap', () => selectNode(rect));
-            rect.on('dragmove', () => {
-                rect.x(Math.round(rect.x() / 20) * 20);
-                rect.y(Math.round(rect.y() / 20) * 20);
+                name: 'zone'
             });
 
-            layer.add(rect);
-            selectNode(rect);
+            const rect = new Konva.Rect({
+                width: w,
+                height: h,
+                fill: color,
+                stroke: '#3b82f6',
+                strokeWidth: 2,
+                dash: [10, 5],
+                name: 'main-rect'
+            });
+
+            const label = new Konva.Text({
+                text: name,
+                fontSize: 14,
+                fill: '#3b82f6',
+                padding: 10,
+                fontStyle: 'bold'
+            });
+
+            const dimLabel = new Konva.Text({
+                text: `${w} x ${h}`,
+                fontSize: 12,
+                fill: '#64748b',
+                x: w - 70,
+                y: h - 20,
+                name: 'dim-label'
+            });
+
+            group.add(rect, label, dimLabel);
+            
+            group.on('dragmove transform', () => {
+                const box = rect.getSelfRect();
+                dimLabel.x(rect.width() - 80);
+                dimLabel.y(rect.height() - 20);
+                dimLabel.text(`${Math.round(rect.width())} x ${Math.round(rect.height())}`);
+            });
+
+            bindEvents(group);
+            layer.add(group);
+            layer.draw();
+        }
+
+        // 新增設備功能
+        function addDevice(name, w, h, z, color) {
+            const group = new Konva.Group({
+                x: 150, y: 150,
+                draggable: true,
+                name: 'device',
+                customData: { height3d: z }
+            });
+
+            const rect = new Konva.Rect({
+                width: w,
+                height: h,
+                fill: color,
+                stroke: 'white',
+                strokeWidth: 1,
+                cornerRadius: 4,
+                name: 'main-rect'
+            });
+
+            const text = new Konva.Text({
+                text: name,
+                fontSize: 12,
+                fill: 'white',
+                width: w,
+                align: 'center',
+                y: h / 2 - 6
+            });
+
+            group.add(rect, text);
+            bindEvents(group);
+            layer.add(group);
+            layer.draw();
+        }
+
+        function bindEvents(node) {
+            node.on('click tap', (e) => {
+                e.cancelBubble = true;
+                selectNode(node);
+            });
+            node.on('dragmove', () => {
+                node.x(Math.round(node.x() / 20) * 20);
+                node.y(Math.round(node.y() / 20) * 20);
+            });
         }
 
         function selectNode(node) {
             selectedNode = node;
             tr.nodes([node]);
-            document.getElementById('prop-controls').style.display = 'block';
-            document.getElementById('empty-hint').style.display = 'none';
-            document.getElementById('p-name').innerText = node.name();
+            updateInspector(node);
             layer.draw();
         }
 
@@ -96,11 +398,44 @@
             if (e.target === stage) {
                 tr.nodes([]);
                 selectedNode = null;
-                document.getElementById('prop-controls').style.display = 'none';
-                document.getElementById('empty-hint').style.display = 'block';
+                document.getElementById('inspector-content').innerHTML = '<p style="color: #64748b;">請選擇物件以編輯</p>';
                 layer.draw();
             }
         });
+
+        function updateInspector(node) {
+            const isZone = node.name() === 'zone';
+            const rect = node.findOne('.main-rect');
+            const content = document.getElementById('inspector-content');
+            
+            content.innerHTML = `
+                <div class="prop-row">
+                    <label class="prop-label">類型</label>
+                    <div style="font-weight:bold">${isZone ? '區域規劃' : '設備儀器'}</div>
+                </div>
+                <div class="prop-row">
+                    <label class="prop-label">寬度 (W)</label>
+                    <input type="number" value="${Math.round(rect.width())}" onchange="updateSelectedSize('w', this.value)">
+                </div>
+                <div class="prop-row">
+                    <label class="prop-label">長度 (H)</label>
+                    <input type="number" value="${Math.round(rect.height())}" onchange="updateSelectedSize('h', this.value)">
+                </div>
+                ${!isZone ? `
+                <div class="prop-row">
+                    <label class="prop-label">高度 (Z)</label>
+                    <input type="number" value="${node.attrs.customData.height3d}" onchange="selectedNode.attrs.customData.height3d = parseInt(this.value)">
+                </div>` : ''}
+            `;
+        }
+
+        function updateSelectedSize(dim, val) {
+            if (!selectedNode) return;
+            const rect = selectedNode.findOne('.main-rect');
+            if (dim === 'w') rect.width(parseInt(val));
+            if (dim === 'h') rect.height(parseInt(val));
+            layer.draw();
+        }
 
         function deleteSelected() {
             if (selectedNode) {
@@ -111,14 +446,112 @@
             }
         }
 
-        function exportImg() {
-            tr.nodes([]);
-            const dataURL = stage.toDataURL();
-            const link = document.createElement('a');
-            link.download = 'lab-design.png';
-            link.href = dataURL;
-            link.click();
+        // 3D 引擎實作
+        let is3D = false;
+        let scene, camera, renderer, cube;
+
+        function init3D() {
+            const container = document.getElementById('three-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0f1a);
+            
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 5000);
+            camera.position.set(500, 500, 1000);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // 光源
+            const ambientLight = new THREE.AmbientLight(0x404040, 2);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+
+            // 地面網格
+            const gridHelper = new THREE.GridHelper(2000, 50, 0x334155, 0x1e293b);
+            scene.add(gridHelper);
         }
+
+        function toggle3D() {
+            const canvas2d = document.getElementById('container');
+            const canvas3d = document.getElementById('three-container');
+            const btn = document.getElementById('toggle-3d');
+
+            if (!scene) init3D();
+
+            is3D = !is3D;
+
+            if (is3D) {
+                canvas3d.style.display = 'block';
+                canvas2d.style.display = 'none';
+                btn.innerHTML = '<i data-lucide="layout"></i> 返回 2D 平面圖';
+                update3DScene();
+                animate3D();
+            } else {
+                canvas3d.style.display = 'none';
+                canvas2d.style.display = 'block';
+                btn.innerHTML = '<i data-lucide="box"></i> 查看 3D 預覽';
+            }
+            lucide.createIcons();
+        }
+
+        function update3DScene() {
+            // 清除現有 3D 物件（保留燈光與網格）
+            while(scene.children.length > 3) {
+                scene.remove(scene.children[scene.children.length-1]);
+            }
+
+            const nodes = layer.getChildren().filter(n => n.name() === 'device' || n.name() === 'zone');
+            
+            nodes.forEach(node => {
+                const rect = node.findOne('.main-rect');
+                const w = rect.width();
+                const d = rect.height();
+                const x = node.x() - stage.width()/2 + w/2;
+                const y = node.y() - stage.height()/2 + d/2;
+
+                if (node.name() === 'device') {
+                    const h = node.attrs.customData.height3d || 100;
+                    const geometry = new THREE.BoxGeometry(w, h, d);
+                    const material = new THREE.MeshPhongMaterial({ 
+                        color: rect.fill(),
+                        transparent: true,
+                        opacity: 0.9 
+                    });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.position.set(x, h/2, y);
+                    scene.add(mesh);
+                } else if (node.name() === 'zone') {
+                    // 區域在 3D 中顯示為半透明地面
+                    const geometry = new THREE.PlaneGeometry(w, d);
+                    const material = new THREE.MeshBasicMaterial({ 
+                        color: 0x3b82f6, 
+                        side: THREE.DoubleSide, 
+                        transparent: true, 
+                        opacity: 0.2 
+                    });
+                    const plane = new THREE.Mesh(geometry, material);
+                    plane.rotation.x = Math.PI / 2;
+                    plane.position.set(x, 1, y);
+                    scene.add(plane);
+                }
+            });
+        }
+
+        function animate3D() {
+            if (!is3D) return;
+            requestAnimationFrame(animate3D);
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            stage.width(window.innerWidth - 580);
+            stage.height(window.innerHeight);
+        });
+
     </script>
 </body>
 </html>
