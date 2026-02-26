@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LabCAD Web Pro - 實驗室規劃系統</title>
 
-  <!-- Keep non-module libs that are not Three.js -->
   <script src="https://unpkg.com/konva@9/konva.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -13,6 +12,7 @@
   <style>
     :root{
       --bg-dark:#0f172a; --bg-sidebar:#1e293b; --primary:#3b82f6; --accent:#10b981; --danger:#ef4444; --border:#334155; --text:#f1f5f9;
+      --warn:#f59e0b;
     }
     body{ margin:0; font-family:'Segoe UI',system-ui; background:var(--bg-dark); color:var(--text); overflow:hidden; }
     .app{ display:grid; grid-template-columns:280px 1fr 320px; height:100vh; }
@@ -80,24 +80,8 @@
     }
     .toggle input{ width:auto; }
 
-    .align-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
-    .small-btn{
-      width:100%;
-      background:#0f172a;
-      border:1px solid rgba(148,163,184,.25);
-      color:#e2e8f0;
-      padding:8px 10px;
-      border-radius:8px;
-      cursor:pointer;
-      font-size:12px;
-    }
-    .small-btn:hover{ border-color: rgba(59,130,246,.7); }
+    .hint{ color:#94a3b8; font-size:12px; line-height:1.35; margin-top:10px; }
 
-    .hint{
-      color:#94a3b8; font-size:12px; line-height:1.35; margin-top:10px;
-    }
-
-    /* 3D info card */
     #info-card{
       position:absolute;
       min-width: 240px;
@@ -157,7 +141,8 @@
       <button class="btn-action" style="background:var(--accent);" id="toggle-3d">查看 3D 預覽</button>
       <div class="hint" style="margin-top:10px;">
         單位：1格=10cm=100mm（格線10px）<br/>
-        3D：點選物件可反選到2D（Shift可多選）
+        3D：點選物件可反選到2D（Shift可多選）<br/>
+        7A：碰撞/走道警示已啟用（預設安全距離 100mm）
       </div>
     </div>
   </aside>
@@ -195,143 +180,104 @@
 </div>
 
 <script type="module">
-/**
- * IMPORTANT:
- * - DO NOT include any non-module three.js scripts in <head>.
- * - Use ONLY these ESM imports to avoid "Multiple instances of Three.js".
- */
-import * as THREE from "https://unpkg.com/three@0.128.0/build/three.module.js?module";
-import { OrbitControls } from "https://unpkg.com/three@0.128.0/examples/jsm/controls/OrbitControls.js?module";
-import { RoundedBoxGeometry } from "https://unpkg.com/three@0.128.0/examples/jsm/geometries/RoundedBoxGeometry.js?module";
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js";
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js";
+import { RoundedBoxGeometry } from "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/geometries/RoundedBoxGeometry.js";
 
 window.lucide?.createIcons?.();
 
-/* ===========================
- * Helpers / UI
- * =========================== */
-function toast(msg, ms = 1200){
-  const el = document.getElementById('toast');
-  if(!el) return;
-  el.textContent = msg;
-  el.style.display = 'block';
-  clearTimeout(el._t);
-  el._t = setTimeout(() => el.style.display = 'none', ms);
+/* ===== helpers ===== */
+function toast(msg, ms=1200){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.style.display='block';
+  clearTimeout(el._t); el._t=setTimeout(()=>el.style.display='none', ms);
 }
-function safeInt(v, fallback=0){
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : fallback;
-}
-function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
+function safeInt(v,f=0){ const n=parseInt(v,10); return Number.isFinite(n)?n:f; }
+function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-/* ===========================
- * Units (1 grid = 100mm, 10px/grid)
- * =========================== */
-const GRID_PX = 10;
-const MM_PER_GRID = 100;
-const MM_PER_PX = MM_PER_GRID / GRID_PX;
-
-function pxToMm(px){ return Math.round(px * MM_PER_PX); }
-function mmToPx(mm){ return mm / MM_PER_PX; }
-function mmToCm(mm){ return (mm / 10); }
+/* ===== units ===== */
+const GRID_PX=10;
+const MM_PER_GRID=100;
+const MM_PER_PX=MM_PER_GRID/GRID_PX;
+function pxToMm(px){ return Math.round(px*MM_PER_PX); }
+function mmToPx(mm){ return mm/MM_PER_PX; }
+function mmToCm(mm){ return mm/10; }
 function fmtMm(mm){ return `${Math.round(mm)}mm`; }
 function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
+function snapPx(v){ return Math.round(v/GRID_PX)*GRID_PX; }
 
-/* ===========================
- * Room settings
- * =========================== */
-const ROOM = {
-  widthMm: 6000,
-  depthMm: 4000,
-  wallHeightMm: 2800,
-  wallThicknessMm: 100
-};
+/* ===== room ===== */
+const ROOM={ widthMm:6000, depthMm:4000, wallHeightMm:2800, wallThicknessMm:100 };
 
-/* ===========================
- * Device Catalog
- * =========================== */
-const DEVICE_CATALOG = [
-  { key:'bench', name:'實驗桌', wMm: 1200, dMm: 600,  hMm: 800,  color:'#3b82f6' },
-  { key:'hood',  name:'排煙櫃', wMm: 1000, dMm: 800,  hMm: 2000, color:'#ef4444' },
-  { key:'sink',  name:'洗滌槽', wMm: 900,  dMm: 600,  hMm: 900,  color:'#22c55e' },
-  { key:'fridge', name:'冰箱', wMm: 700,  dMm: 700,  hMm: 1800, color:'#60a5fa' },
-  { key:'centrifuge', name:'離心機', wMm: 600, dMm: 600, hMm: 900, color:'#f59e0b' },
-  { key:'ultra_low_freezer', name:'超低溫冰箱', wMm: 800, dMm: 800, hMm: 2000, color:'#38bdf8' },
-  { key:'incubator', name:'培養箱', wMm: 700, dMm: 600, hMm: 1600, color:'#a78bfa' },
+/* ===== collision / clearance settings (7A) ===== */
+const SAFETY_CLEARANCE_MM_DEFAULT = 100; // 1 grid = 100mm
+let collisionPairs = []; // [{aId,bId,type:'overlap'|'clearance'}]
+let conflictIds = new Set();
+
+/* ===== device catalog ===== */
+const DEVICE_CATALOG=[
+  { key:'bench', name:'實驗桌', wMm:1200, dMm:600,  hMm:800,  color:'#3b82f6' },
+  { key:'hood',  name:'排煙櫃', wMm:1000, dMm:800,  hMm:2000, color:'#ef4444' },
+  { key:'sink',  name:'洗滌槽', wMm:900,  dMm:600,  hMm:900,  color:'#22c55e' },
+  { key:'fridge', name:'冰箱', wMm:700,  dMm:700,  hMm:1800, color:'#60a5fa' },
+  { key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, color:'#f59e0b' },
+  { key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, color:'#38bdf8' },
+  { key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, color:'#a78bfa' },
 ];
-const DEVICE_BY_KEY = new Map(DEVICE_CATALOG.map(d => [d.key, d]));
-
+const DEVICE_BY_KEY=new Map(DEVICE_CATALOG.map(d=>[d.key,d]));
 function renderDeviceCatalog(){
-  const section = document.getElementById('device-catalog');
-  const title = section.querySelector('.tool-section-title');
-  section.innerHTML = '';
-  section.appendChild(title);
-
-  DEVICE_CATALOG.forEach(d => {
-    const div = document.createElement('div');
-    div.className = 'item';
-    div.textContent = d.name;
-    div.onclick = () => addDeviceFromCatalog(d.key);
+  const section=document.getElementById('device-catalog');
+  const title=section.querySelector('.tool-section-title');
+  section.innerHTML=''; section.appendChild(title);
+  DEVICE_CATALOG.forEach(d=>{
+    const div=document.createElement('div');
+    div.className='item';
+    div.textContent=d.name;
+    div.onclick=()=>addDeviceFromCatalog(d.key);
     section.appendChild(div);
   });
 }
-
 function addDeviceFromCatalog(key){
-  const d = DEVICE_BY_KEY.get(key);
-  if(!d) return;
+  const d=DEVICE_BY_KEY.get(key); if(!d) return;
   addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), d.color, d.key);
 }
 
-/* ===========================
- * Konva 2D
- * =========================== */
-const stage = new Konva.Stage({
-  container: 'container',
-  width: window.innerWidth - 600,
-  height: window.innerHeight
-});
+/* ===== konva 2D ===== */
+const stage=new Konva.Stage({ container:'container', width:window.innerWidth-600, height:window.innerHeight });
+const gridLayer=new Konva.Layer();
+const layer=new Konva.Layer();
+stage.add(gridLayer); stage.add(layer);
 
-const gridLayer = new Konva.Layer();
-const layer = new Konva.Layer();
-stage.add(gridLayer);
-stage.add(layer);
-
-const tr = new Konva.Transformer({ keepRatio: false });
+const tr=new Konva.Transformer({ keepRatio:false });
 layer.add(tr);
 
-let selectedNodes = [];
-let selectedNode = null;
+let selectedNodes=[];
+let selectedNode=null;
 
-let gridVisible = true;
-let snapEnabled = true;
-
-function snapPx(v){ return Math.round(v / GRID_PX) * GRID_PX; }
+let gridVisible=true;
+let snapEnabled=true;
 
 function drawGrid(){
   gridLayer.destroyChildren();
   if(!gridVisible){ gridLayer.draw(); return; }
-  const w = stage.width(), h = stage.height();
-  for(let x=0; x<=w; x+=GRID_PX) gridLayer.add(new Konva.Line({ points:[x,0,x,h], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
-  for(let y=0; y<=h; y+=GRID_PX) gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
+  const w=stage.width(), h=stage.height();
+  for(let x=0;x<=w;x+=GRID_PX) gridLayer.add(new Konva.Line({ points:[x,0,x,h], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
+  for(let y=0;y<=h;y+=GRID_PX) gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
   gridLayer.draw();
 }
 
-/* Room boundary 2D */
-let roomRect2D = null;
+/* room boundary 2D */
+let roomRect2D=null;
 function drawRoomBoundary2D(){
   if(roomRect2D) roomRect2D.destroy();
-  const wPx = mmToPx(ROOM.widthMm);
-  const dPx = mmToPx(ROOM.depthMm);
-  roomRect2D = new Konva.Rect({
-    x: snapPx((stage.width() - wPx)/2),
-    y: snapPx((stage.height() - dPx)/2),
-    width: wPx,
-    height: dPx,
-    stroke: 'rgba(15,23,42,0.45)',
-    strokeWidth: 2,
-    fill: 'rgba(15,23,42,0.03)',
+  const wPx=mmToPx(ROOM.widthMm), dPx=mmToPx(ROOM.depthMm);
+  roomRect2D=new Konva.Rect({
+    x:snapPx((stage.width()-wPx)/2),
+    y:snapPx((stage.height()-dPx)/2),
+    width:wPx, height:dPx,
+    stroke:'rgba(15,23,42,0.45)', strokeWidth:2,
+    fill:'rgba(15,23,42,0.03)',
     listening:false,
     name:'room-boundary'
   });
@@ -340,9 +286,9 @@ function drawRoomBoundary2D(){
 }
 function getRoomRectPx(){ if(!roomRect2D) drawRoomBoundary2D(); return roomRect2D.getClientRect(); }
 
-/* Selection rectangle */
+/* selection rectangle */
 let selecting=false;
-let selectionRect = new Konva.Rect({
+let selectionRect=new Konva.Rect({
   x:0,y:0,width:0,height:0,
   fill:'rgba(59,130,246,0.12)',
   stroke:'rgba(59,130,246,0.9)',
@@ -351,49 +297,48 @@ let selectionRect = new Konva.Rect({
   listening:false
 });
 layer.add(selectionRect);
-let startPos = null;
+let startPos=null;
 
-/* ===========================
- * CRUD Nodes
- * =========================== */
+/* CRUD nodes */
 function addZone(name){
   createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.1)', '#3b82f6', 'zone');
 }
-
 function addDevice(name, wPx, dPx, hPx, color, deviceKey){
-  createNode('device', name, wPx, dPx, hPx, color, '#1e293b', deviceKey || 'device');
+  createNode('device', name, wPx, dPx, hPx, color, '#1e293b', deviceKey||'device');
 }
-
 function createNode(type, name, wPx, dPx, hPx, fill, stroke, deviceKey){
-  const group = new Konva.Group({
-    x: 100, y: 100, draggable: true, name: type,
-    customData: { height3dPx: hPx||0, deviceKey: deviceKey }
+  const group=new Konva.Group({
+    x:100,y:100, draggable:true, name:type,
+    customData:{ height3dPx:hPx||0, deviceKey, clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT }
   });
 
-  const rect = new Konva.Rect({ width:wPx, height:dPx, fill, stroke, name:'main-rect', dash: type==='zone' ? [10,5] : [] });
-  const title = new Konva.Text({ text:name, fontSize:14, fill:stroke, padding:8, name:'title-text' });
-  const dim = new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
+  const rect=new Konva.Rect({ width:wPx, height:dPx, fill, stroke, name:'main-rect', dash: type==='zone' ? [10,5] : [] });
+  const title=new Konva.Text({ text:name, fontSize:14, fill:stroke, padding:8, name:'title-text' });
+  const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
 
   group.add(rect,title,dim);
   updateUI(group);
 
-  group.on('dragmove', () => {
+  group.on('dragmove',()=>{
     if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
     constrainToRoom(group);
     updateUI(group);
     scheduleAutosave();
+    scheduleCollisionCheck();
   });
-  group.on('dragend', () => scheduleAutosave());
-  group.on('transform', () => { updateUI(group); scheduleAutosave(); });
-  group.on('transformend', () => {
+  group.on('dragend',()=>{ scheduleAutosave(); scheduleCollisionCheck(); });
+  group.on('transform',()=>{ updateUI(group); scheduleAutosave(); scheduleCollisionCheck(); });
+  group.on('transformend',()=>{
     if(snapEnabled) normalizeGroupToGrid(group);
     constrainToRoom(group);
     scheduleAutosave();
+    scheduleCollisionCheck();
     if(is3DVisible()) update3D();
   });
-  group.on('click tap', (e) => {
-    e.cancelBubble = true;
-    const multi = e.evt && e.evt.shiftKey;
+
+  group.on('click tap',(e)=>{
+    e.cancelBubble=true;
+    const multi=e.evt && e.evt.shiftKey;
     if(multi) toggleSelectNode(group);
     else selectSingleNode(group);
   });
@@ -405,302 +350,235 @@ function createNode(type, name, wPx, dPx, hPx, fill, stroke, deviceKey){
   layer.draw();
 
   scheduleAutosave();
+  scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
 
 function normalizeGroupToGrid(group){
   group.x(snapPx(group.x()));
   group.y(snapPx(group.y()));
-  const rect = group.findOne('.main-rect');
-  const absW = rect.width()*group.scaleX();
-  const absH = rect.height()*group.scaleY();
-  const targetW = Math.max(GRID_PX, snapPx(absW));
-  const targetH = Math.max(GRID_PX, snapPx(absH));
+  const rect=group.findOne('.main-rect');
+  const absW=rect.width()*group.scaleX();
+  const absH=rect.height()*group.scaleY();
+  const targetW=Math.max(GRID_PX, snapPx(absW));
+  const targetH=Math.max(GRID_PX, snapPx(absH));
   group.scaleX(targetW/rect.width());
   group.scaleY(targetH/rect.height());
 }
 
 function constrainToRoom(group){
   if(!roomRect2D) return;
-  const rr = getRoomRectPx();
-  const r = group.findOne('.main-rect');
-  const w = r.width()*group.scaleX();
-  const h = r.height()*group.scaleY();
-  let x = clamp(group.x(), rr.x, rr.x + rr.width - w);
-  let y = clamp(group.y(), rr.y, rr.y + rr.height - h);
-  group.position({x,y});
+  const rr=getRoomRectPx();
+  const r=group.findOne('.main-rect');
+  const w=r.width()*group.scaleX();
+  const h=r.height()*group.scaleY();
+  group.position({
+    x: clamp(group.x(), rr.x, rr.x+rr.width-w),
+    y: clamp(group.y(), rr.y, rr.y+rr.height-h)
+  });
 }
 
 function updateUI(group){
-  const rect = group.findOne('.main-rect');
-  const dim = group.findOne('.dim-label');
-  const wPx = rect.width()*group.scaleX();
-  const dPx = rect.height()*group.scaleY();
+  const rect=group.findOne('.main-rect');
+  const dim=group.findOne('.dim-label');
+  const wPx=rect.width()*group.scaleX();
+  const dPx=rect.height()*group.scaleY();
   dim.text(`${fmtMm(pxToMm(wPx))} x ${fmtMm(pxToMm(dPx))}`);
-  dim.x(rect.width() - dim.width() - 5);
-  dim.y(rect.height() - 15);
+  dim.x(rect.width()-dim.width()-5);
+  dim.y(rect.height()-15);
+
+  // 7A: collision visual
+  const inConflict = conflictIds.has(group._id);
+  rect.stroke(inConflict ? '#ef4444' : rect.stroke()); // keep original stroke for zones/devices; simplified: override to red when conflict
+  if(inConflict) rect.strokeWidth(2); else rect.strokeWidth(1);
+
   if(selectedNodes.includes(group)) renderInspector();
 }
 
-/* ===========================
- * Selection model
- * =========================== */
+/* selection model */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
   sync3DSelectionHighlight();
 }
-
 function clearSelection(){
-  selectedNodes = [];
-  selectedNode = null;
+  selectedNodes=[]; selectedNode=null;
   applyTransformer();
   renderInspector();
 }
-
 function selectSingleNode(node){
-  selectedNodes = [node];
-  selectedNode = node;
-  applyTransformer();
-  renderInspector();
+  selectedNodes=[node]; selectedNode=node;
+  applyTransformer(); renderInspector();
 }
-
 function toggleSelectNode(node){
-  const idx = selectedNodes.indexOf(node);
-  if(idx >= 0) selectedNodes.splice(idx, 1);
-  else selectedNodes.push(node);
-  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-  applyTransformer();
-  renderInspector();
+  const idx=selectedNodes.indexOf(node);
+  if(idx>=0) selectedNodes.splice(idx,1); else selectedNodes.push(node);
+  selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
+  applyTransformer(); renderInspector();
 }
 
 /* click empty */
-stage.on('click tap', (e) => {
-  if(e.target === stage){
-    clearSelection();
-    if(is3DVisible()) update3D();
-  }
-});
+stage.on('click tap',(e)=>{ if(e.target===stage){ clearSelection(); if(is3DVisible()) update3D(); }});
 
 /* marquee */
-stage.on('mousedown touchstart', (e) => {
+stage.on('mousedown touchstart',(e)=>{
   if(is3DVisible()) return;
-  if(e.target !== stage) return;
-  if(e.evt && (e.evt.button !== undefined) && e.evt.button !== 0) return;
-
-  selecting = true;
-  startPos = stage.getPointerPosition();
+  if(e.target!==stage) return;
+  if(e.evt && (e.evt.button!==undefined) && e.evt.button!==0) return;
+  selecting=true;
+  startPos=stage.getPointerPosition();
   selectionRect.visible(true);
   selectionRect.position(startPos);
-  selectionRect.size({ width: 0, height: 0 });
+  selectionRect.size({width:0,height:0});
   layer.draw();
 });
-stage.on('mousemove touchmove', () => {
+stage.on('mousemove touchmove',()=>{
   if(!selecting) return;
-  const pos = stage.getPointerPosition(); if(!pos) return;
-  const x = Math.min(startPos.x, pos.x);
-  const y = Math.min(startPos.y, pos.y);
-  const w = Math.abs(pos.x - startPos.x);
-  const h = Math.abs(pos.y - startPos.y);
-  selectionRect.setAttrs({ x, y, width: w, height: h });
+  const pos=stage.getPointerPosition(); if(!pos) return;
+  const x=Math.min(startPos.x,pos.x);
+  const y=Math.min(startPos.y,pos.y);
+  const w=Math.abs(pos.x-startPos.x);
+  const h=Math.abs(pos.y-startPos.y);
+  selectionRect.setAttrs({x,y,width:w,height:h});
   layer.batchDraw();
 });
-stage.on('mouseup touchend', (e) => {
+stage.on('mouseup touchend',(e)=>{
   if(!selecting) return;
-  selecting = false;
+  selecting=false;
   selectionRect.visible(false);
   layer.draw();
 
-  const box = selectionRect.getClientRect();
-  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
-  const additive = e.evt && e.evt.shiftKey;
-
-  const hits = groups.filter(g => Konva.Util.haveIntersection(box, g.getClientRect()));
-  if(!additive) selectedNodes = [];
-  hits.forEach(g => { if(!selectedNodes.includes(g)) selectedNodes.push(g); });
-
-  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-  applyTransformer();
-  renderInspector();
+  const box=selectionRect.getClientRect();
+  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
+  const additive=e.evt && e.evt.shiftKey;
+  const hits=groups.filter(g=>Konva.Util.haveIntersection(box, g.getClientRect()));
+  if(!additive) selectedNodes=[];
+  hits.forEach(g=>{ if(!selectedNodes.includes(g)) selectedNodes.push(g); });
+  selectedNode=selectedNodes.length===1 ? selectedNodes[0] : null;
+  applyTransformer(); renderInspector();
   if(is3DVisible()) update3D();
 });
 
-/* ===========================
- * Inspector (room + single + multi)
- * =========================== */
+/* ===== Inspector ===== */
 function renderInspector(mode){
-  const container = document.getElementById('inspector-content');
+  const container=document.getElementById('inspector-content');
 
-  if(mode === 'room'){
-    container.innerHTML = `
+  if(mode==='room'){
+    container.innerHTML=`
       <div class="chip">矩形房間設定</div>
       <div class="prop-grid" style="margin-top:12px;">
-        <div class="prop-group"><label class="prop-label">寬度 (mm)</label><input type="number" value="${ROOM.widthMm}" oninput="window.__updateRoom('widthMm', this.value)"></div>
-        <div class="prop-group"><label class="prop-label">長度 (mm)</label><input type="number" value="${ROOM.depthMm}" oninput="window.__updateRoom('depthMm', this.value)"></div>
-        <div class="prop-group"><label class="prop-label">牆高 (mm)</label><input type="number" value="${ROOM.wallHeightMm}" oninput="window.__updateRoom('wallHeightMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">寬度 (mm)</label><input type="number" value="${ROOM.widthMm}" oninput="updateRoom('widthMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">長度 (mm)</label><input type="number" value="${ROOM.depthMm}" oninput="updateRoom('depthMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">牆高 (mm)</label><input type="number" value="${ROOM.wallHeightMm}" oninput="updateRoom('wallHeightMm', this.value)"></div>
         <div class="prop-group"><label class="prop-label">牆厚 (mm)</label><input type="number" value="${ROOM.wallThicknessMm}" disabled></div>
       </div>
-      <div class="hint" style="margin-top:10px;">2D 會顯示邊界並限制拖曳；3D 會生成地板與四面牆。</div>
-      <button class="btn-action" style="background:#334155" onclick="toast('已套用房間設定')">完成</button>
+      <div class="hint" style="margin-top:10px;">3D 會生成地板與四面牆。</div>
     `;
     return;
   }
 
-  if(selectedNodes.length === 0){
-    container.innerHTML = `<div class="chip">請選擇物件</div><div class="hint">左鍵拖曳空白處可框選，Shift 可多選。</div>`;
+  if(selectedNodes.length===0){
+    container.innerHTML=`
+      <div class="chip">請選擇物件</div>
+      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組（紅色=重疊；橘色=距離不足）</div>
+    `;
     return;
   }
 
-  if(selectedNodes.length > 1){
-    container.innerHTML = `
+  if(selectedNodes.length>1){
+    container.innerHTML=`
       <div class="chip">已選取：${selectedNodes.length} 個物件</div>
-      <div class="toggle">
-        <div><div class="prop-label">格線</div><div style="font-size:12px;color:#94a3b8;">格距：10cm</div></div>
-        <input type="checkbox" ${gridVisible ? 'checked' : ''} onchange="window.__toggleGridFromInspector()">
-      </div>
-      <div class="toggle">
-        <div><div class="prop-label">吸附</div><div style="font-size:12px;color:#94a3b8;">對齊格線</div></div>
-        <input type="checkbox" ${snapEnabled ? 'checked' : ''} onchange="window.__toggleSnapFromInspector()">
-      </div>
-      <button class="btn-action" style="background:var(--danger)" onclick="window.__deleteSelected()">刪除選取 (${selectedNodes.length})</button>
+      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取</button>
     `;
     return;
   }
 
-  const n = selectedNodes[0];
-  const r = n.findOne('.main-rect');
-  const wPx = r.width() * n.scaleX();
-  const dPx = r.height() * n.scaleY();
-  const hPx = n.attrs.customData?.height3dPx || 0;
-  const key = n.attrs.customData?.deviceKey || n.name();
+  const n=selectedNodes[0];
+  const r=n.findOne('.main-rect');
+  const wPx=r.width()*n.scaleX();
+  const dPx=r.height()*n.scaleY();
+  const hPx=n.attrs.customData?.height3dPx||0;
+  const key=n.attrs.customData?.deviceKey||n.name();
+  const clearance=n.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
 
-  container.innerHTML = `
-    <div class="chip">已選取：1 個物件（Shift 可多選）</div>
-
-    <div class="prop-row" style="margin-top:12px;">
-      <label class="prop-label">名稱</label>
-      <input type="text" value="${escapeHtml(n.findOne('.title-text').text())}" oninput="window.__updateProp('name', this.value)">
-    </div>
-
-    <div class="prop-grid">
-      <div class="prop-group"><label class="prop-label">X (mm)</label><input type="number" value="${pxToMm(n.x())}" oninput="window.__updateProp('xMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">Y (mm)</label><input type="number" value="${pxToMm(n.y())}" oninput="window.__updateProp('yMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">寬 (mm)</label><input type="number" value="${pxToMm(wPx)}" oninput="window.__updateProp('wMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">深 (mm)</label><input type="number" value="${pxToMm(dPx)}" oninput="window.__updateProp('dMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">旋轉 (deg)</label><input type="number" value="${Math.round(n.rotation())}" oninput="window.__updateProp('rot', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">高度 (mm)</label><input type="number" value="${pxToMm(hPx)}" oninput="window.__updateProp('hMm', this.value)"></div>
-    </div>
-
-    <div class="hint">
+  container.innerHTML=`
+    <div class="chip">已選取：1 個物件</div>
+    <div class="hint" style="margin-top:10px;">
       類別：<b>${escapeHtml(key)}</b><br/>
-      尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b> / 擺放高度：<b>${fmtCm(pxToMm(hPx))}</b>
+      尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
+      高度：<b>${fmtCm(pxToMm(hPx))}</b>
     </div>
 
-    <button class="btn-action" style="background:var(--danger)" onclick="window.__deleteSelected()">刪除物件</button>
+    <div class="prop-group" style="margin-top:12px;">
+      <label class="prop-label">安全距離 (mm)</label>
+      <input type="number" value="${clearance}" oninput="updateClearance(this.value)">
+    </div>
+
+    <div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
   `;
 }
 
-/* Expose inspector callbacks safely (avoid inline module scope issues) */
-window.__updateRoom = (p, v) => {
-  const mm = Math.max(1000, safeInt(v, ROOM[p]));
-  ROOM[p] = mm;
-  drawGrid();
-  drawRoomBoundary2D();
+function updateRoom(p,v){
+  ROOM[p]=Math.max(1000, safeInt(v, ROOM[p]));
+  drawGrid(); drawRoomBoundary2D();
   scheduleAutosave();
+  scheduleCollisionCheck();
   if(is3DVisible()) update3D();
-};
-window.__toggleGridFromInspector = () => { gridVisible = !gridVisible; drawGrid(); scheduleAutosave(); };
-window.__toggleSnapFromInspector = () => { snapEnabled = !snapEnabled; scheduleAutosave(); };
-window.__deleteSelected = () => deleteSelected();
+}
 
-window.__updateProp = (p, v) => {
-  if(selectedNodes.length !== 1) return;
-  const node = selectedNodes[0];
-
-  if(p === 'name') node.findOne('.title-text').text(v);
-
-  if(p === 'xMm') node.x(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
-  if(p === 'yMm') node.y(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
-
-  if(p === 'wMm'){
-    const rect = node.findOne('.main-rect');
-    const baseW = rect.width();
-    let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseW))));
-    if(snapEnabled) targetPx = Math.max(GRID_PX, snapPx(targetPx));
-    node.scaleX(targetPx / baseW);
-  }
-  if(p === 'dMm'){
-    const rect = node.findOne('.main-rect');
-    const baseH = rect.height();
-    let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseH))));
-    if(snapEnabled) targetPx = Math.max(GRID_PX, snapPx(targetPx));
-    node.scaleY(targetPx / baseH);
-  }
-
-  if(p === 'rot') node.rotation(safeInt(v));
-  if(p === 'hMm') node.attrs.customData.height3dPx = mmToPx(Math.max(0, safeInt(v)));
-
-  if(snapEnabled) normalizeGroupToGrid(node);
-  constrainToRoom(node);
-  updateUI(node);
-  layer.draw();
-
+function updateClearance(v){
+  if(selectedNodes.length!==1) return;
+  const mm=Math.max(0, safeInt(v, SAFETY_CLEARANCE_MM_DEFAULT));
+  selectedNodes[0].attrs.customData.clearanceMm = mm;
   scheduleAutosave();
-  if(is3DVisible()) update3D();
-};
+  scheduleCollisionCheck();
+}
 
-/* ===========================
- * Delete / Export
- * =========================== */
+/* ===== delete/export ===== */
 function deleteSelected(){
-  if(selectedNodes.length === 0) return;
-  selectedNodes.forEach(n => n.destroy());
+  if(selectedNodes.length===0) return;
+  selectedNodes.forEach(n=>n.destroy());
   clearSelection();
   layer.draw();
   scheduleAutosave();
+  scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
 
 function exportImg(format){
   tr.nodes([]);
   layer.draw();
-
-  if(format === 'png'){
-    const a = document.createElement('a');
-    a.download = 'lab.png';
-    a.href = stage.toDataURL();
+  if(format==='png'){
+    const a=document.createElement('a');
+    a.download='lab.png';
+    a.href=stage.toDataURL();
     a.click();
   }else{
-    const doc = new window.jspdf.jsPDF('l','px',[stage.width(), stage.height()]);
-    doc.addImage(stage.toDataURL(), 'PNG', 0, 0, stage.width(), stage.height());
+    const doc=new window.jspdf.jsPDF('l','px',[stage.width(), stage.height()]);
+    doc.addImage(stage.toDataURL(), 'PNG', 0,0, stage.width(), stage.height());
     doc.save('lab.pdf');
   }
 }
 
-/* ===========================
- * Save/Load JSON + autosave
- * =========================== */
-const STORAGE_KEY = 'labcad_design_v1';
-let autosaveTimer = null;
+/* ===== save/load ===== */
+const STORAGE_KEY='labcad_design_v1';
+let autosaveTimer=null;
 
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON()));
-    }catch(err){
-      console.error(err);
-      toast('自動保存失敗');
-    }
+  autosaveTimer=setTimeout(()=>{
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON())); }
+    catch(err){ console.error(err); toast('自動保存失敗'); }
   }, 150);
 }
 
 function serializeNode(group){
-  const r = group.findOne('.main-rect');
-  const title = group.findOne('.title-text');
-  const wPx = r.width() * group.scaleX();
-  const dPx = r.height() * group.scaleY();
-  const hPx = group.attrs.customData?.height3dPx || 0;
+  const r=group.findOne('.main-rect');
+  const title=group.findOne('.title-text');
+  const wPx=r.width()*group.scaleX();
+  const dPx=r.height()*group.scaleY();
+  const hPx=group.attrs.customData?.height3dPx||0;
 
   return {
     type: group.name(),
@@ -714,146 +592,203 @@ function serializeNode(group){
     fill: r.fill(),
     stroke: r.stroke(),
     dash: r.dash(),
-    hMm: pxToMm(hPx)
+    hMm: pxToMm(hPx),
+    clearanceMm: group.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT
   };
 }
 
 function getDesignJSON(){
-  const nodes = layer.getChildren()
-    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
+  const nodes=layer.getChildren()
+    .filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'))
     .map(serializeNode);
 
   return {
-    version: 7,
+    version: 71,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
     room: { ...ROOM },
     ui: { gridVisible, snapEnabled },
+    safety: { defaultClearanceMm: SAFETY_CLEARANCE_MM_DEFAULT },
     nodes
   };
 }
 
 function downloadText(filename, text, mime='application/json'){
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
+  const blob=new Blob([text],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename;
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-
-function exportDesignJSON(){
-  downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2));
-  toast('已匯出 JSON');
-}
+function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
 
 function loadDesignFromObject(design){
-  if(!design || !Array.isArray(design.nodes)) throw new Error('Invalid design format');
-
-  // clear objects
-  layer.getChildren()
-    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
-    .forEach(g => g.destroy());
-
+  layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g=>g.destroy());
   clearSelection();
 
-  if(design.room){
+  if(design?.room){
     ROOM.widthMm = design.room.widthMm ?? ROOM.widthMm;
     ROOM.depthMm = design.room.depthMm ?? ROOM.depthMm;
     ROOM.wallHeightMm = design.room.wallHeightMm ?? ROOM.wallHeightMm;
     ROOM.wallThicknessMm = design.room.wallThicknessMm ?? ROOM.wallThicknessMm;
   }
-  if(design.ui){
+  if(design?.ui){
     gridVisible = design.ui.gridVisible ?? gridVisible;
     snapEnabled = design.ui.snapEnabled ?? snapEnabled;
   }
 
-  design.nodes.forEach(n => {
-    const type = n.type === 'zone' ? 'zone' : 'device';
-    const stroke = n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
-    const dash = Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
-    const fill = n.fill || (type==='zone' ? 'rgba(59,130,246,0.1)' : '#3b82f6');
+  (design?.nodes || []).forEach(n=>{
+    const type=n.type==='zone'?'zone':'device';
+    const stroke=n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
+    const dash=Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
+    const fill=n.fill || (type==='zone' ? 'rgba(59,130,246,0.1)' : '#3b82f6');
 
-    const group = new Konva.Group({
-      x: mmToPx(Number(n.xMm) || 0),
-      y: mmToPx(Number(n.yMm) || 0),
-      draggable: true,
-      name: type,
-      customData: {
-        height3dPx: mmToPx(Number(n.hMm) || 0),
-        deviceKey: n.key || type
+    const group=new Konva.Group({
+      x: mmToPx(Number(n.xMm)||0),
+      y: mmToPx(Number(n.yMm)||0),
+      draggable:true,
+      name:type,
+      customData:{
+        height3dPx: mmToPx(Number(n.hMm)||0),
+        deviceKey: n.key || type,
+        clearanceMm: Number(n.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT)
       }
     });
 
-    const rect = new Konva.Rect({
-      width: mmToPx(Math.max(100, Number(n.wMm) || 1000)),
-      height: mmToPx(Math.max(100, Number(n.dMm) || 1000)),
-      fill,
-      stroke,
-      name: 'main-rect',
-      dash
+    const rect=new Konva.Rect({
+      width: mmToPx(Math.max(100, Number(n.wMm)||1000)),
+      height: mmToPx(Math.max(100, Number(n.dMm)||1000)),
+      fill, stroke, name:'main-rect', dash
     });
-
-    const title = new Konva.Text({ text: n.name || '', fontSize: 14, fill: stroke, padding: 8, name: 'title-text' });
-    const dim = new Konva.Text({ text: '', fontSize: 10, fill: stroke, name: 'dim-label' });
-
-    group.rotation(Number(n.rot) || 0);
-    group.add(rect, title, dim);
+    const title=new Konva.Text({ text:n.name||'', fontSize:14, fill:stroke, padding:8, name:'title-text' });
+    const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
+    group.rotation(Number(n.rot)||0);
+    group.add(rect,title,dim);
     updateUI(group);
 
-    group.on('dragmove', () => {
-      if(snapEnabled) group.position({ x: snapPx(group.x()), y: snapPx(group.y()) });
+    group.on('dragmove',()=>{
+      if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
       constrainToRoom(group);
       updateUI(group);
       scheduleAutosave();
+      scheduleCollisionCheck();
     });
-    group.on('dragend', () => scheduleAutosave());
-    group.on('transform', () => { updateUI(group); scheduleAutosave(); });
-    group.on('transformend', () => {
+    group.on('dragend',()=>{ scheduleAutosave(); scheduleCollisionCheck(); });
+    group.on('transform',()=>{ updateUI(group); scheduleAutosave(); scheduleCollisionCheck(); });
+    group.on('transformend',()=>{
       if(snapEnabled) normalizeGroupToGrid(group);
       constrainToRoom(group);
       scheduleAutosave();
+      scheduleCollisionCheck();
       if(is3DVisible()) update3D();
     });
-    group.on('click tap', (e) => {
-      e.cancelBubble = true;
-      const multi = e.evt && e.evt.shiftKey;
+    group.on('click tap',(e)=>{
+      e.cancelBubble=true;
+      const multi=e.evt && e.evt.shiftKey;
       if(multi) toggleSelectNode(group);
       else selectSingleNode(group);
     });
 
     layer.add(group);
-    if(type === 'zone') group.moveToBottom();
+    if(type==='zone') group.moveToBottom();
   });
 
-  drawGrid();
-  drawRoomBoundary2D();
-  layer.draw();
-
+  drawGrid(); drawRoomBoundary2D(); layer.draw();
   scheduleAutosave();
+  scheduleCollisionCheck();
   if(is3DVisible()) update3D();
-
   toast('已載入設計');
 }
 
 function tryLoadFromLocalStorage(){
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw=localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
-  try{
-    loadDesignFromObject(JSON.parse(raw));
-    toast('已從自動保存載入');
-  }catch(err){
-    console.warn('Failed to load autosave:', err);
-  }
+  try{ loadDesignFromObject(JSON.parse(raw)); toast('已從自動保存載入'); }
+  catch(err){ console.warn(err); }
 }
 
-/* ===========================
- * 3D Prefabs (RoundedBoxGeometry)
- * =========================== */
+/* ===== collision detection (7A-1) ===== */
+let collisionTimer=null;
+function scheduleCollisionCheck(){
+  clearTimeout(collisionTimer);
+  collisionTimer=setTimeout(()=>recomputeCollisions(), 80);
+}
+
+function getDeviceGroups(){
+  return layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='device');
+}
+
+function expandRect(rect, mm){
+  const px = mmToPx(mm);
+  return { x: rect.x - px, y: rect.y - px, width: rect.width + px*2, height: rect.height + px*2 };
+}
+
+function rectsOverlap(a,b){
+  return !(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+}
+
+function recomputeCollisions(){
+  const devices=getDeviceGroups();
+  collisionPairs=[];
+  conflictIds=new Set();
+
+  // reset strokes first (restore device default stroke)
+  devices.forEach(g=>{
+    const rect=g.findOne('.main-rect');
+    rect.stroke('#1e293b');
+    rect.strokeWidth(1);
+  });
+
+  for(let i=0;i<devices.length;i++){
+    for(let j=i+1;j<devices.length;j++){
+      const A=devices[i], B=devices[j];
+      const ra=A.getClientRect();
+      const rb=B.getClientRect();
+
+      // overlap
+      if(rectsOverlap(ra, rb)){
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'overlap' });
+        conflictIds.add(A._id); conflictIds.add(B._id);
+        continue;
+      }
+
+      // clearance (simple expanded overlap check)
+      const ca = A.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+      const cb = B.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+      const c = Math.max(ca, cb);
+
+      const ra2 = expandRect(ra, c);
+      const rb2 = expandRect(rb, c);
+      if(rectsOverlap(ra2, rb2)){
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'clearance' });
+        // mark as "soft conflict" too (orange)
+        conflictIds.add(A._id); conflictIds.add(B._id);
+      }
+    }
+  }
+
+  // apply visual
+  devices.forEach(g=>{
+    const rect=g.findOne('.main-rect');
+    if(!conflictIds.has(g._id)) return;
+
+    // red if any overlap pair includes it, else orange
+    const hasHard = collisionPairs.some(p => p.type==='overlap' && (p.aId===g._id || p.bId===g._id));
+    rect.stroke(hasHard ? '#ef4444' : '#f59e0b');
+    rect.strokeWidth(2);
+  });
+
+  layer.draw();
+  renderInspector(); // update conflict count
+  sync3DConflictHighlight();
+}
+
+/* ===== 3D prefab + engine ===== */
 function stdMat(hex, opts={}){
-  const m = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(hex),
+  const m=new THREE.MeshStandardMaterial({
+    color:new THREE.Color(hex),
     roughness: opts.roughness ?? 0.7,
     metalness: opts.metalness ?? 0.05,
     transparent: !!opts.transparent,
@@ -865,274 +800,221 @@ function stdMat(hex, opts={}){
   }
   return m;
 }
-
-function makeRoundedBox(w, h, d, radius, smooth=3, mat){
-  const g = new RoundedBoxGeometry(w, h, d, smooth, radius);
-  const m = new THREE.Mesh(g, mat);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
+function makeRoundedBox(w,h,d,radius,smooth=3,mat){
+  const g=new RoundedBoxGeometry(w,h,d,smooth,radius);
+  const mesh=new THREE.Mesh(g,mat);
+  mesh.castShadow=true; mesh.receiveShadow=true;
+  return mesh;
 }
-
-function makeHandle(x, y, z, len, vertical=true){
-  const geo = new THREE.CylinderGeometry(7, 7, len, 12);
-  const mat = stdMat('#cbd5e1', { roughness:0.28, metalness:0.75 });
-  const m = new THREE.Mesh(geo, mat);
-  if(!vertical) m.rotation.z = Math.PI/2;
+function makeHandle(x,y,z,len,vertical=true){
+  const geo=new THREE.CylinderGeometry(7,7,len,12);
+  const mat=stdMat('#cbd5e1',{ roughness:0.28, metalness:0.75 });
+  const m=new THREE.Mesh(geo,mat);
+  if(!vertical) m.rotation.z=Math.PI/2;
   m.position.set(x,y,z);
-  m.castShadow = true;
+  m.castShadow=true;
   return m;
 }
-
-function makePanel(x, y, z, w, h){
-  const geo = new RoundedBoxGeometry(w, h, 10, 2, Math.min(8, w*0.08));
-  const mat = stdMat('#0b1220', { roughness:0.5, metalness:0.05, emissive:'#60a5fa', emissiveIntensity:0.85 });
-  const m = new THREE.Mesh(geo, mat);
+function makePanel(x,y,z,w,h){
+  const geo=new RoundedBoxGeometry(w,h,10,2,Math.min(8,w*0.08));
+  const mat=stdMat('#0b1220',{ roughness:0.5, metalness:0.05, emissive:'#60a5fa', emissiveIntensity:0.85 });
+  const m=new THREE.Mesh(geo,mat);
   m.position.set(x,y,z);
-  m.castShadow = false;
+  m.castShadow=false;
   return m;
 }
 
-function buildBench(w, d, h){
-  const root = new THREE.Group();
-
-  const top = makeRoundedBox(w, 44, d, 16, 3, stdMat('#f1f5f9', { roughness:0.88, metalness:0.02 }));
-  top.position.set(0, h - 22, 0);
+function buildBench(w,d,h){
+  const root=new THREE.Group();
+  const top=makeRoundedBox(w,44,d,16,3,stdMat('#f1f5f9',{roughness:0.88,metalness:0.02}));
+  top.position.set(0,h-22,0);
   root.add(top);
 
-  const legH = h - 70;
-  const legMat = stdMat('#334155', { roughness:0.92, metalness:0.08 });
-  const legGeo = new RoundedBoxGeometry(28, legH, 28, 1, 6);
-  const offsets = [
-    [-w/2+26, legH/2, -d/2+26],
-    [ w/2-26, legH/2, -d/2+26],
-    [-w/2+26, legH/2,  d/2-26],
-    [ w/2-26, legH/2,  d/2-26],
-  ];
-  offsets.forEach(([x,y,z]) => {
-    const leg = new THREE.Mesh(legGeo, legMat);
-    leg.position.set(x,y,z);
-    leg.castShadow = true;
-    root.add(leg);
-  });
+  const legH=h-70;
+  const legMat=stdMat('#334155',{roughness:0.92,metalness:0.08});
+  const legGeo=new RoundedBoxGeometry(28,legH,28,1,6);
+  [[-w/2+26,legH/2,-d/2+26],[w/2-26,legH/2,-d/2+26],[-w/2+26,legH/2,d/2-26],[w/2-26,legH/2,d/2-26]]
+    .forEach(([x,y,z])=>{ const leg=new THREE.Mesh(legGeo,legMat); leg.position.set(x,y,z); leg.castShadow=true; root.add(leg); });
 
-  const frame = makeRoundedBox(w-60, 20, 20, 6, 1, legMat);
-  frame.position.set(0, 130, -d/2 + 22);
+  const frame=makeRoundedBox(w-60,20,20,6,1,legMat);
+  frame.position.set(0,130,-d/2+22);
   root.add(frame);
-
-  return { root, pickHeight: h };
+  return { root, pickHeight:h };
 }
 
-function buildCabinetLike(w, d, h, bodyHex, withGlass=false){
-  const root = new THREE.Group();
-  const radius = Math.min(22, Math.min(w,d)*0.08);
+function buildCabinetLike(w,d,h,bodyHex,withGlass=false){
+  const root=new THREE.Group();
+  const radius=Math.min(22,Math.min(w,d)*0.08);
 
-  const body = makeRoundedBox(w, h, d, radius, 3, stdMat(bodyHex, { roughness:0.78, metalness:0.05 }));
-  body.position.set(0, h/2, 0);
+  const body=makeRoundedBox(w,h,d,radius,3,stdMat(bodyHex,{roughness:0.78,metalness:0.05}));
+  body.position.set(0,h/2,0);
   root.add(body);
 
-  const seam = makeRoundedBox(w*0.9, h*0.88, 2, Math.min(12, radius), 1, stdMat('#0b1220', { roughness:1.0, metalness:0.0, transparent:true, opacity:0.55 }));
-  seam.position.set(0, h/2, d/2 + 1);
+  const seam=makeRoundedBox(w*0.9,h*0.88,2,Math.min(12,radius),1,stdMat('#0b1220',{roughness:1,metalness:0,transparent:true,opacity:0.55}));
+  seam.position.set(0,h/2,d/2+1);
   root.add(seam);
 
-  root.add(makeHandle(w/2 - 36, h/2, d/2 + 14, h*0.45, true));
-  root.add(makePanel(0, h - 120, d/2 + 12, w*0.5, 74));
+  root.add(makeHandle(w/2-36,h/2,d/2+14,h*0.45,true));
+  root.add(makePanel(0,h-120,d/2+12,w*0.5,74));
 
   if(withGlass){
-    const glass = makeRoundedBox(w*0.82, h*0.74, 8, Math.min(18, radius), 2, stdMat('#93c5fd', { transparent:true, opacity:0.16, roughness:0.15, metalness:0.0 }));
-    glass.position.set(0, h/2, d/2 + 8);
-    glass.castShadow = false;
+    const glass=makeRoundedBox(w*0.82,h*0.74,8,Math.min(18,radius),2,stdMat('#93c5fd',{transparent:true,opacity:0.16,roughness:0.15,metalness:0}));
+    glass.position.set(0,h/2,d/2+8);
+    glass.castShadow=false;
     root.add(glass);
   }
-
-  const footGeo = new THREE.CylinderGeometry(10, 10, 18, 12);
-  const footMat = stdMat('#0f172a', { roughness:0.9, metalness:0.1 });
-  const corners = [
-    [-w/2+22, 10, -d/2+22],
-    [ w/2-22, 10, -d/2+22],
-    [-w/2+22, 10,  d/2-22],
-    [ w/2-22, 10,  d/2-22],
-  ];
-  corners.forEach(([x,y,z]) => {
-    const f = new THREE.Mesh(footGeo, footMat);
-    f.position.set(x, y, z);
-    f.castShadow = true;
-    root.add(f);
-  });
-
-  return { root, pickHeight: h };
+  return { root, pickHeight:h };
 }
 
-function buildCentrifuge(w, d, h){
-  const root = new THREE.Group();
-  const baseH = h*0.55;
-
-  const base = makeRoundedBox(w, baseH, d, Math.min(18, Math.min(w,d)*0.08), 3, stdMat('#f1f5f9', { roughness:0.82 }));
-  base.position.set(0, baseH/2, 0);
+function buildCentrifuge(w,d,h){
+  const root=new THREE.Group();
+  const baseH=h*0.55;
+  const base=makeRoundedBox(w,baseH,d,Math.min(18,Math.min(w,d)*0.08),3,stdMat('#f1f5f9',{roughness:0.82}));
+  base.position.set(0,baseH/2,0);
   root.add(base);
 
-  const lid = new THREE.Mesh(
-    new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 28),
-    stdMat('#cbd5e1', { roughness:0.55, metalness:0.08 })
-  );
-  lid.position.set(0, baseH + (h*0.14), 0);
-  lid.castShadow = true;
+  const lid=new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.38,Math.min(w,d)*0.38,h*0.28,28), stdMat('#cbd5e1',{roughness:0.55,metalness:0.08}));
+  lid.position.set(0,baseH+h*0.14,0);
+  lid.castShadow=true;
   root.add(lid);
 
-  root.add(makePanel(w*0.22, baseH*0.65, d/2 + 14, w*0.38, h*0.22));
-  return { root, pickHeight: h };
+  root.add(makePanel(w*0.22,baseH*0.65,d/2+14,w*0.38,h*0.22));
+  return { root, pickHeight:h };
 }
 
-function buildSink(w, d, h){
-  const root = new THREE.Group();
-
-  const top = makeRoundedBox(w, 44, d, 16, 3, stdMat('#f1f5f9', { roughness:0.9 }));
-  top.position.set(0, h - 22, 0);
+function buildSink(w,d,h){
+  const root=new THREE.Group();
+  const top=makeRoundedBox(w,44,d,16,3,stdMat('#f1f5f9',{roughness:0.9}));
+  top.position.set(0,h-22,0);
   root.add(top);
 
-  const basin = makeRoundedBox(w*0.55, 26, d*0.45, 14, 2, stdMat('#cbd5e1', { roughness:0.4, metalness:0.28 }));
-  basin.position.set(-w*0.08, h - 30, 0);
+  const basin=makeRoundedBox(w*0.55,26,d*0.45,14,2,stdMat('#cbd5e1',{roughness:0.4,metalness:0.28}));
+  basin.position.set(-w*0.08,h-30,0);
   root.add(basin);
 
-  const post = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 120, 14), stdMat('#94a3b8', { roughness:0.3, metalness:0.75 }));
-  post.position.set(w*0.2, h + 30, 0);
-  post.castShadow = true;
-  root.add(post);
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(10,10,120,14), stdMat('#94a3b8',{roughness:0.3,metalness:0.75}));
+  post.position.set(w*0.2,h+30,0); post.castShadow=true; root.add(post);
 
-  const spout = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 120, 14), post.material);
-  spout.rotation.z = Math.PI/2;
-  spout.position.set(w*0.2 + 55, h + 70, 0);
-  spout.castShadow = true;
-  root.add(spout);
+  const spout=new THREE.Mesh(new THREE.CylinderGeometry(8,8,120,14), post.material);
+  spout.rotation.z=Math.PI/2;
+  spout.position.set(w*0.2+55,h+70,0); spout.castShadow=true; root.add(spout);
 
-  const cab = makeRoundedBox(w*0.92, h-60, d*0.92, 16, 3, stdMat('#f8fafc', { roughness:0.9 }));
-  cab.position.set(0, (h-60)/2, 0);
+  const cab=makeRoundedBox(w*0.92,h-60,d*0.92,16,3,stdMat('#f8fafc',{roughness:0.9}));
+  cab.position.set(0,(h-60)/2,0);
   root.add(cab);
 
-  root.add(makeHandle(w*0.35, (h-60)/2, d/2 + 14, (h-60)*0.35, true));
-  return { root, pickHeight: h };
+  root.add(makeHandle(w*0.35,(h-60)/2,d/2+14,(h-60)*0.35,true));
+  return { root, pickHeight:h };
 }
 
-function buildHood(w, d, h){
-  const root = new THREE.Group();
-  const radius = Math.min(22, Math.min(w,d)*0.08);
+function buildHood(w,d,h){
+  const root=new THREE.Group();
+  const radius=Math.min(22,Math.min(w,d)*0.08);
+  const body=makeRoundedBox(w,h,d,radius,3,stdMat('#f1f5f9',{roughness:0.9}));
+  body.position.set(0,h/2,0); root.add(body);
 
-  const body = makeRoundedBox(w, h, d, radius, 3, stdMat('#f1f5f9', { roughness:0.9 }));
-  body.position.set(0, h/2, 0);
-  root.add(body);
+  const glass=makeRoundedBox(w*0.9,h*0.55,10,Math.min(16,radius),2,stdMat('#93c5fd',{transparent:true,opacity:0.18,roughness:0.12,metalness:0}));
+  glass.position.set(0,h*0.55,d/2+12); glass.castShadow=false; root.add(glass);
 
-  const glass = makeRoundedBox(w*0.9, h*0.55, 10, Math.min(16, radius), 2, stdMat('#93c5fd', { transparent:true, opacity:0.18, roughness:0.12, metalness:0.0 }));
-  glass.position.set(0, h*0.55, d/2 + 12);
-  glass.castShadow = false;
-  root.add(glass);
-
-  root.add(makePanel(0, h - 140, d/2 + 16, w*0.6, 84));
-
-  const base = makeRoundedBox(w, 46, d, 14, 2, stdMat('#94a3b8', { roughness:0.95, metalness:0.05 }));
-  base.position.set(0, 23, 0);
-  root.add(base);
-
-  return { root, pickHeight: h };
+  root.add(makePanel(0,h-140,d/2+16,w*0.6,84));
+  const base=makeRoundedBox(w,46,d,14,2,stdMat('#94a3b8',{roughness:0.95,metalness:0.05}));
+  base.position.set(0,23,0); root.add(base);
+  return { root, pickHeight:h };
 }
 
-function buildPrefab(key, w, d, h){
+function buildPrefab(key,w,d,h){
   switch(key){
-    case 'bench': return buildBench(w, d, mmToPx(800));
-    case 'fridge': return buildCabinetLike(w, d, h, '#f8fafc', false);
-    case 'ultra_low_freezer': return buildCabinetLike(w, d, h, '#e2e8f0', false);
-    case 'incubator': return buildCabinetLike(w, d, h, '#f8fafc', true);
-    case 'centrifuge': return buildCentrifuge(w, d, h);
-    case 'sink': return buildSink(w, d, mmToPx(900));
-    case 'hood': return buildHood(w, d, h);
-    default: return buildCabinetLike(w, d, h, '#e5e7eb', false);
+    case 'bench': return buildBench(w,d,mmToPx(800));
+    case 'fridge': return buildCabinetLike(w,d,h,'#f8fafc',false);
+    case 'ultra_low_freezer': return buildCabinetLike(w,d,h,'#e2e8f0',false);
+    case 'incubator': return buildCabinetLike(w,d,h,'#f8fafc',true);
+    case 'centrifuge': return buildCentrifuge(w,d,h);
+    case 'sink': return buildSink(w,d,mmToPx(900));
+    case 'hood': return buildHood(w,d,h);
+    default: return buildCabinetLike(w,d,h,'#e5e7eb',false);
   }
 }
 
-/* ===========================
- * 3D Engine
- * =========================== */
+/* 3D engine */
 let sc, cam, rend, ctrl;
 let objectsGroup, roomGroup3D, dirLight, groundMesh;
 
-const threeMap = new Map(); // id -> { root, pickMesh, outline, key, zoneMesh? }
-const pickables = [];
-
-const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2();
+const threeMap=new Map(); // id -> { root, pickMesh, outline, key, zoneMesh? }
+const pickables=[];
+const raycaster=new THREE.Raycaster();
+const pointer=new THREE.Vector2();
 
 function is3DVisible(){
-  const c3d = document.getElementById('three-container');
-  return c3d && c3d.style.display === 'block';
+  const c3d=document.getElementById('three-container');
+  return c3d && c3d.style.display==='block';
 }
-
 function get3DSize(){
-  const c3d = document.getElementById('three-container');
-  return { w: Math.max(1, c3d.clientWidth || 0), h: Math.max(1, c3d.clientHeight || 0) };
+  const c3d=document.getElementById('three-container');
+  return { w:Math.max(1,c3d.clientWidth||0), h:Math.max(1,c3d.clientHeight||0) };
 }
-
 function resize3D(){
-  if(!rend || !cam) return;
-  const { w, h } = get3DSize();
-  rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  rend.setSize(w, h, false);
-  cam.aspect = w / h;
+  if(!rend||!cam) return;
+  const {w,h}=get3DSize();
+  rend.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  rend.setSize(w,h,false);
+  cam.aspect=w/h;
   cam.updateProjectionMatrix();
   updateDebug3D();
 }
 
 function init3DIfNeeded(){
-  const c3d = document.getElementById('three-container');
+  const c3d=document.getElementById('three-container');
   if(sc) return;
 
-  sc = new THREE.Scene();
-  sc.background = new THREE.Color(0x0a0f1a);
+  sc=new THREE.Scene();
+  sc.background=new THREE.Color(0x0a0f1a);
 
-  const { w, h } = get3DSize();
-  cam = new THREE.PerspectiveCamera(45, w / h, 1, 20000);
-  cam.position.set(1000, 1000, 1000);
+  const {w,h}=get3DSize();
+  cam=new THREE.PerspectiveCamera(45,w/h,1,20000);
+  cam.position.set(1000,1000,1000);
 
-  rend = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  rend.setSize(w, h, false);
-  rend.shadowMap.enabled = true;
-  rend.shadowMap.type = THREE.PCFSoftShadowMap;
+  rend=new THREE.WebGLRenderer({ antialias:true, alpha:false });
+  rend.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  rend.setSize(w,h,false);
+  rend.shadowMap.enabled=true;
+  rend.shadowMap.type=THREE.PCFSoftShadowMap;
   c3d.appendChild(rend.domElement);
 
-  ctrl = new OrbitControls(cam, rend.domElement);
-  ctrl.enableDamping = true;
-  ctrl.dampingFactor = 0.08;
-  ctrl.target.set(0, 0, 0);
+  ctrl=new OrbitControls(cam, rend.domElement);
+  ctrl.enableDamping=true;
+  ctrl.dampingFactor=0.08;
+  ctrl.target.set(0,0,0);
   ctrl.update();
 
-  sc.add(new THREE.AmbientLight(0xffffff, 0.55));
+  sc.add(new THREE.AmbientLight(0xffffff,0.55));
 
-  dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
-  dirLight.position.set(1200, 1800, 900);
-  dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = 2048;
-  dirLight.shadow.mapSize.height = 2048;
-  dirLight.shadow.camera.near = 1;
-  dirLight.shadow.camera.far = 12000;
-  dirLight.shadow.camera.left = -5000;
-  dirLight.shadow.camera.right = 5000;
-  dirLight.shadow.camera.top = 5000;
-  dirLight.shadow.camera.bottom = -5000;
+  dirLight=new THREE.DirectionalLight(0xffffff,0.9);
+  dirLight.position.set(1200,1800,900);
+  dirLight.castShadow=true;
+  dirLight.shadow.mapSize.width=2048;
+  dirLight.shadow.mapSize.height=2048;
+  dirLight.shadow.camera.near=1;
+  dirLight.shadow.camera.far=12000;
+  dirLight.shadow.camera.left=-5000;
+  dirLight.shadow.camera.right=5000;
+  dirLight.shadow.camera.top=5000;
+  dirLight.shadow.camera.bottom=-5000;
   sc.add(dirLight);
 
-  const groundGeo = new THREE.PlaneGeometry(12000, 12000);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95, metalness: 0.0 });
-  groundMesh = new THREE.Mesh(groundGeo, groundMat);
-  groundMesh.rotation.x = -Math.PI / 2;
-  groundMesh.position.y = 0;
-  groundMesh.receiveShadow = true;
+  const groundGeo=new THREE.PlaneGeometry(12000,12000);
+  const groundMat=new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.95, metalness:0.0 });
+  groundMesh=new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.rotation.x=-Math.PI/2;
+  groundMesh.position.y=0;
+  groundMesh.receiveShadow=true;
   sc.add(groundMesh);
 
-  sc.add(new THREE.GridHelper(8000, 80, 0x334155, 0x1e293b));
+  sc.add(new THREE.GridHelper(8000,80,0x334155,0x1e293b));
 
-  roomGroup3D = new THREE.Group();
+  roomGroup3D=new THREE.Group();
   sc.add(roomGroup3D);
 
-  objectsGroup = new THREE.Group();
+  objectsGroup=new THREE.Group();
   sc.add(objectsGroup);
 
   rend.domElement.addEventListener('pointerdown', onPointerDown3D);
@@ -1141,173 +1023,157 @@ function init3DIfNeeded(){
 function buildRoom3D(){
   while(roomGroup3D.children.length) roomGroup3D.remove(roomGroup3D.children[0]);
 
-  const w = mmToPx(ROOM.widthMm);
-  const d = mmToPx(ROOM.depthMm);
-  const wallH = mmToPx(ROOM.wallHeightMm);
-  const t = mmToPx(ROOM.wallThicknessMm);
+  const w=mmToPx(ROOM.widthMm);
+  const d=mmToPx(ROOM.depthMm);
+  const wallH=mmToPx(ROOM.wallHeightMm);
+  const t=mmToPx(ROOM.wallThicknessMm);
 
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9, metalness: 0.0 });
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95, metalness: 0.0 });
+  const wallMat=new THREE.MeshStandardMaterial({ color:0x111827, roughness:0.9, metalness:0.0 });
+  const floorMat=new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.95, metalness:0.0 });
 
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w, d), floorMat);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(w,d), floorMat);
+  floor.rotation.x=-Math.PI/2;
+  floor.receiveShadow=true;
   roomGroup3D.add(floor);
 
-  const wallGeo1 = new THREE.BoxGeometry(w, wallH, t);
-  const wallGeo2 = new THREE.BoxGeometry(t, wallH, d);
+  const wallGeo1=new THREE.BoxGeometry(w,wallH,t);
+  const wallGeo2=new THREE.BoxGeometry(t,wallH,d);
 
-  const wallN = new THREE.Mesh(wallGeo1, wallMat); wallN.position.set(0, wallH/2, -d/2);
-  const wallS = new THREE.Mesh(wallGeo1, wallMat); wallS.position.set(0, wallH/2, d/2);
-  const wallW = new THREE.Mesh(wallGeo2, wallMat); wallW.position.set(-w/2, wallH/2, 0);
-  const wallE = new THREE.Mesh(wallGeo2, wallMat); wallE.position.set(w/2, wallH/2, 0);
+  const wallN=new THREE.Mesh(wallGeo1, wallMat); wallN.position.set(0,wallH/2,-d/2);
+  const wallS=new THREE.Mesh(wallGeo1, wallMat); wallS.position.set(0,wallH/2,d/2);
+  const wallW=new THREE.Mesh(wallGeo2, wallMat); wallW.position.set(-w/2,wallH/2,0);
+  const wallE=new THREE.Mesh(wallGeo2, wallMat); wallE.position.set(w/2,wallH/2,0);
 
-  [wallN, wallS, wallW, wallE].forEach(wm => { wm.castShadow=true; wm.receiveShadow=true; roomGroup3D.add(wm); });
+  [wallN,wallS,wallW,wallE].forEach(wm=>{ wm.castShadow=true; wm.receiveShadow=true; roomGroup3D.add(wm); });
 }
 
 function update3D(){
   if(!sc) return;
-
   buildRoom3D();
 
   while(objectsGroup.children.length) objectsGroup.remove(objectsGroup.children[0]);
   threeMap.clear();
-  pickables.length = 0;
+  pickables.length=0;
 
-  const roomRect = getRoomRectPx();
-  const roomWpx = mmToPx(ROOM.widthMm);
-  const roomDpx = mmToPx(ROOM.depthMm);
-  const roomCenterX = roomRect.x + roomRect.width/2;
-  const roomCenterY = roomRect.y + roomRect.height/2;
+  const roomRect=getRoomRectPx();
+  const roomWpx=mmToPx(ROOM.widthMm);
+  const roomDpx=mmToPx(ROOM.depthMm);
+  const roomCenterX=roomRect.x+roomRect.width/2;
+  const roomCenterY=roomRect.y+roomRect.height/2;
 
-  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
 
-  groups.forEach(n => {
-    const r = n.findOne('.main-rect');
-    const wPx = r.width() * n.scaleX();
-    const dPx = r.height() * n.scaleY();
-    const hPx = n.attrs.customData?.height3dPx || mmToPx(800);
+  groups.forEach(n=>{
+    const r=n.findOne('.main-rect');
+    const wPx=r.width()*n.scaleX();
+    const dPx=r.height()*n.scaleY();
+    const hPx=n.attrs.customData?.height3dPx || mmToPx(800);
 
-    const center2dX = n.x() + wPx/2;
-    const center2dY = n.y() + dPx/2;
+    const center2dX=n.x()+wPx/2;
+    const center2dY=n.y()+dPx/2;
+    const x3d=center2dX-roomCenterX;
+    const z3d=center2dY-roomCenterY;
 
-    const x3d = center2dX - roomCenterX;
-    const z3d = center2dY - roomCenterY;
+    const id=n._id;
+    const key=n.attrs.customData?.deviceKey || n.name();
 
-    const id = n._id;
-    const key = n.attrs.customData?.deviceKey || n.name();
-
-    if(n.name() === 'device'){
-      const prefab = buildPrefab(key, wPx, dPx, hPx);
-      const root = prefab.root;
-
-      root.position.set(x3d, 0, z3d);
+    if(n.name()==='device'){
+      const prefab=buildPrefab(key,wPx,dPx,hPx);
+      const root=prefab.root;
+      root.position.set(x3d,0,z3d);
       root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
+      root.traverse(obj=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; }});
 
-      root.traverse((obj) => {
-        if(obj.isMesh){
-          obj.castShadow = true;
-          obj.receiveShadow = true;
-        }
-      });
-
-      // invisible pick volume
-      const pickGeo = new THREE.BoxGeometry(wPx, prefab.pickHeight ?? hPx, dPx);
-      const pickMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 });
-      const pickMesh = new THREE.Mesh(pickGeo, pickMat);
-      pickMesh.position.set(0, (prefab.pickHeight ?? hPx)/2, 0);
-      pickMesh.userData = { konvaId: id, kind:'device' };
+      const pickGeo=new THREE.BoxGeometry(wPx, prefab.pickHeight ?? hPx, dPx);
+      const pickMat=new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 });
+      const pickMesh=new THREE.Mesh(pickGeo, pickMat);
+      pickMesh.position.set(0,(prefab.pickHeight ?? hPx)/2,0);
+      pickMesh.userData={ konvaId:id, kind:'device' };
       root.add(pickMesh);
 
-      // outline
-      const outline = new THREE.LineSegments(
+      const outline=new THREE.LineSegments(
         new THREE.EdgesGeometry(pickGeo),
-        new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent:true, opacity:0.95 })
+        new THREE.LineBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95 })
       );
       outline.position.copy(pickMesh.position);
-      outline.visible = false;
+      outline.visible=false;
       root.add(outline);
 
       objectsGroup.add(root);
-      threeMap.set(id, { root, pickMesh, outline, key });
+      threeMap.set(id,{ root, pickMesh, outline, key });
       pickables.push(pickMesh);
-
     }else{
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x3b82f6,
-        transparent:true,
-        opacity:0.18,
-        roughness:0.95,
-        metalness:0.0,
-        side: THREE.DoubleSide
-      });
+      const mat=new THREE.MeshStandardMaterial({ color:0x3b82f6, transparent:true, opacity:0.18, roughness:0.95, metalness:0.0, side:THREE.DoubleSide });
+      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(wPx,dPx), mat);
+      mesh.rotation.x=-Math.PI/2;
+      mesh.position.set(x3d,1,z3d);
+      mesh.userData={ konvaId:id, kind:'zone' };
 
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(wPx, dPx), mat);
-      mesh.rotation.x = -Math.PI/2;
-      mesh.position.set(x3d, 1, z3d);
-      mesh.userData = { konvaId: id, kind:'zone' };
-
-      const edges = new THREE.LineSegments(
+      const edges=new THREE.LineSegments(
         new THREE.EdgesGeometry(mesh.geometry),
-        new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent:true, opacity:0.9 })
+        new THREE.LineBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.9 })
       );
       edges.rotation.copy(mesh.rotation);
       edges.position.copy(mesh.position);
-      edges.visible = false;
+      edges.visible=false;
 
-      const root = new THREE.Group();
-      root.add(mesh);
-      root.add(edges);
-
+      const root=new THREE.Group();
+      root.add(mesh); root.add(edges);
       objectsGroup.add(root);
-      threeMap.set(id, { root, pickMesh: mesh, outline: edges, key:'zone', zoneMesh: mesh });
+      threeMap.set(id,{ root, pickMesh:mesh, outline:edges, key:'zone', zoneMesh:mesh });
       pickables.push(mesh);
     }
   });
 
   fitCameraToRoom(roomWpx, roomDpx);
   sync3DSelectionHighlight();
+  sync3DConflictHighlight();
   updateDebug3D();
 }
 
 function fitCameraToRoom(roomWpx, roomDpx){
-  if(!cam || !ctrl) return;
-  const maxDim = Math.max(roomWpx, roomDpx);
-  const center = new THREE.Vector3(0,0,0);
-  ctrl.target.copy(center);
-
-  const fov = cam.fov * (Math.PI/180);
-  let dist = Math.abs(maxDim/2/Math.tan(fov/2));
-  dist *= 1.35;
-
-  const dir = new THREE.Vector3(1,1,1).normalize();
-  cam.position.copy(center.clone().add(dir.multiplyScalar(dist)));
-  cam.near = Math.max(1, dist/100);
-  cam.far = Math.max(20000, dist*10);
+  const maxDim=Math.max(roomWpx, roomDpx);
+  ctrl.target.set(0,0,0);
+  const fov=cam.fov*(Math.PI/180);
+  let dist=Math.abs(maxDim/2/Math.tan(fov/2));
+  dist*=1.35;
+  const dir=new THREE.Vector3(1,1,1).normalize();
+  cam.position.copy(dir.multiplyScalar(dist));
+  cam.near=Math.max(1, dist/100);
+  cam.far=Math.max(20000, dist*10);
   cam.updateProjectionMatrix();
   ctrl.update();
 }
 
 function sync3DSelectionHighlight(){
-  const sel = new Set(selectedNodes.map(n => n._id));
-  threeMap.forEach((obj, id) => {
-    const selected = sel.has(id);
-    obj.outline.visible = selected;
+  const sel=new Set(selectedNodes.map(n=>n._id));
+  threeMap.forEach((obj,id)=>{
+    const selected=sel.has(id);
 
     if(obj.zoneMesh){
       obj.zoneMesh.material.opacity = selected ? 0.28 : 0.18;
+      obj.outline.visible = selected;
       return;
     }
+    // base outline for selection (blue), unless conflict overrides
+    obj.outline.visible = selected;
+  });
+}
 
-    // mild emissive highlight on meshes that have emissive
-    obj.root.traverse((m) => {
-      if(!m.isMesh) return;
-      if(m === obj.pickMesh) return;
-      if(m.material && m.material.emissive){
-        m.material.emissive.setHex(selected ? 0x1d4ed8 : 0x000000);
-        m.material.emissiveIntensity = selected ? 0.12 : 0.0;
-      }
-    });
+function sync3DConflictHighlight(){
+  // conflict overrides outline color to red/orange
+  threeMap.forEach((obj,id)=>{
+    if(obj.zoneMesh) return;
+    const isConflict = conflictIds.has(id);
+    if(!obj.outline || !obj.outline.material) return;
+
+    if(!isConflict){
+      obj.outline.material.color.setHex(0x93c5fd);
+      return;
+    }
+    const hard = collisionPairs.some(p => p.type==='overlap' && (p.aId===id || p.bId===id));
+    obj.outline.material.color.setHex(hard ? 0xef4444 : 0xf59e0b);
+    obj.outline.visible = true;
   });
 }
 
@@ -1320,160 +1186,108 @@ function animate3D(){
 }
 
 function updateDebug3D(){
-  const debug = document.getElementById('debug3d');
+  const debug=document.getElementById('debug3d');
   if(!debug || !is3DVisible()) return;
-  const { w, h } = get3DSize();
+  const {w,h}=get3DSize();
   debug.textContent =
-    `3D: ${w} x ${h}\n` +
-    `Room: ${ROOM.widthMm}x${ROOM.depthMm}mm\n` +
-    `Objects: ${threeMap.size}\n` +
-    `Selected: ${selectedNodes.length}\n`;
+    `3D: ${w}x${h}\n`+
+    `Objects: ${threeMap.size}\n`+
+    `Conflicts: ${collisionPairs.length}\n`;
 }
 
-/* 3D picking + info card */
+/* picking + info card */
 function onPointerDown3D(e){
-  if(!is3DVisible() || !cam) return;
-
-  const rect = rend.domElement.getBoundingClientRect();
+  const rect=rend.domElement.getBoundingClientRect();
   pointer.set(
-    ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    -(((e.clientY - rect.top) / rect.height) * 2 - 1)
+    ((e.clientX-rect.left)/rect.width)*2-1,
+    -(((e.clientY-rect.top)/rect.height)*2-1)
   );
   raycaster.setFromCamera(pointer, cam);
 
-  const hits = raycaster.intersectObjects(pickables, false);
-  if(hits.length === 0){
+  const hits=raycaster.intersectObjects(pickables,false);
+  if(hits.length===0){
     hideInfoCard();
-    if(!e.shiftKey){
-      clearSelection();
-      layer.draw();
-    }
+    if(!e.shiftKey){ clearSelection(); layer.draw(); }
     return;
   }
 
-  const hit = hits[0].object;
-  const konvaId = hit.userData?.konvaId;
-  if(!konvaId) return;
-
-  const node = layer.getChildren().find(n => n instanceof Konva.Group && n._id === konvaId);
+  const hit=hits[0].object;
+  const id=hit.userData?.konvaId;
+  const node=layer.getChildren().find(n=>n instanceof Konva.Group && n._id===id);
   if(!node) return;
 
   if(e.shiftKey) toggleSelectNode(node);
   else selectSingleNode(node);
 
   layer.draw();
-  showInfoCardFor(node, { x: e.clientX, y: e.clientY });
+  showInfoCardFor(node, { x:e.clientX, y:e.clientY });
 }
 
 function getNodeSizeMm(node){
-  const r = node.findOne('.main-rect');
-  const wPx = r.width() * node.scaleX();
-  const dPx = r.height() * node.scaleY();
-  const hPx = node.attrs.customData?.height3dPx || 0;
-  return { wMm: pxToMm(wPx), dMm: pxToMm(dPx), hMm: pxToMm(hPx) };
+  const r=node.findOne('.main-rect');
+  const wPx=r.width()*node.scaleX();
+  const dPx=r.height()*node.scaleY();
+  const hPx=node.attrs.customData?.height3dPx||0;
+  return { wMm:pxToMm(wPx), dMm:pxToMm(dPx), hMm:pxToMm(hPx) };
 }
+function showInfoCardFor(node, pt){
+  const card=document.getElementById('info-card');
+  const name=node.findOne('.title-text')?.text()||'';
+  const key=node.attrs.customData?.deviceKey || node.name();
+  const size=getNodeSizeMm(node);
 
-function showInfoCardFor(node, pointerClient){
-  const card = document.getElementById('info-card');
-  const name = node.findOne('.title-text')?.text() || '';
-  const key = node.attrs.customData?.deviceKey || node.name();
-  const size = getNodeSizeMm(node);
-
-  card.innerHTML = `
-    <div class="info-title">
-      <div class="info-icon">⟲</div>
-      <div style="flex:1;"><div style="font-weight:800;">${escapeHtml(name)}</div></div>
-    </div>
+  card.innerHTML=`
+    <div class="info-title"><div class="info-icon">⟲</div><div style="flex:1;"><div style="font-weight:800;">${escapeHtml(name)}</div></div></div>
     <div class="info-row"><div class="info-key">類別</div><div>${escapeHtml(key)}</div></div>
     <div class="info-row"><div class="info-key">尺寸</div><div>${size.wMm}×${size.dMm}mm</div></div>
     <div class="info-row"><div class="info-key">擺放高度</div><div>${fmtCm(size.hMm)}</div></div>
   `;
-  card.style.display = 'block';
+  card.style.display='block';
 
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const cardRect = { w: 320, h: 150 };
-  let left = pointerClient.x + 14;
-  let top = pointerClient.y + 14;
-  if(left + cardRect.w > vw) left = pointerClient.x - cardRect.w - 14;
-  if(top + cardRect.h > vh) top = pointerClient.y - cardRect.h - 14;
-
-  card.style.left = `${left}px`;
-  card.style.top = `${top}px`;
+  const vw=window.innerWidth, vh=window.innerHeight;
+  const cw=320, ch=150;
+  let left=pt.x+14, top=pt.y+14;
+  if(left+cw>vw) left=pt.x-cw-14;
+  if(top+ch>vh) top=pt.y-ch-14;
+  card.style.left=`${left}px`;
+  card.style.top=`${top}px`;
 }
-function hideInfoCard(){
-  const card = document.getElementById('info-card');
-  if(card) card.style.display = 'none';
-}
+function hideInfoCard(){ const card=document.getElementById('info-card'); card.style.display='none'; }
 
-/* ===========================
- * Hotkeys
- * =========================== */
-window.addEventListener('keydown', (e) => {
-  const tag = document.activeElement?.tagName?.toLowerCase();
-  const typing = tag === 'input' || tag === 'textarea';
+/* ===== ui wiring ===== */
+document.getElementById('room-settings-btn').onclick=()=>renderInspector('room');
+document.getElementById('add-zone-btn').onclick=()=>addZone('新規劃區域');
 
-  if(e.key === 'Escape'){
-    hideInfoCard();
-    clearSelection();
-    layer.draw();
-    sync3DSelectionHighlight();
-    return;
-  }
+document.getElementById('btn-export-png').onclick=()=>exportImg('png');
+document.getElementById('btn-export-pdf').onclick=()=>exportImg('pdf');
+document.getElementById('btn-delete').onclick=()=>deleteSelected();
 
-  if(!typing && (e.key === 'Delete' || e.key === 'Backspace')){
-    deleteSelected();
-    e.preventDefault();
-    return;
-  }
-
-  if(!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a'){
-    const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
-    selectedNodes = groups;
-    selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-    applyTransformer();
-    renderInspector();
-    e.preventDefault();
-  }
-});
-
-/* ===========================
- * UI wiring
- * =========================== */
-document.getElementById('room-settings-btn').onclick = () => renderInspector('room');
-document.getElementById('add-zone-btn').onclick = () => addZone('新規劃區域');
-
-document.getElementById('btn-export-png').onclick = () => exportImg('png');
-document.getElementById('btn-export-pdf').onclick = () => exportImg('pdf');
-document.getElementById('btn-delete').onclick = () => deleteSelected();
-
-document.getElementById('btn-export-json').onclick = () => exportDesignJSON();
-document.getElementById('btn-import-json').onclick = () => document.getElementById('import-json-input').click();
-document.getElementById('btn-reset').onclick = () => {
-  layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g => g.destroy());
+document.getElementById('btn-export-json').onclick=()=>exportDesignJSON();
+document.getElementById('btn-import-json').onclick=()=>document.getElementById('import-json-input').click();
+document.getElementById('btn-reset').onclick=()=>{
+  layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g=>g.destroy());
   clearSelection();
   localStorage.removeItem(STORAGE_KEY);
+  scheduleCollisionCheck();
   layer.draw();
   if(is3DVisible()) update3D();
   toast('已清空');
 };
+document.getElementById('btn-grid').onclick=()=>{ gridVisible=!gridVisible; drawGrid(); scheduleAutosave(); };
+document.getElementById('btn-snap').onclick=()=>{ snapEnabled=!snapEnabled; scheduleAutosave(); };
 
-document.getElementById('btn-grid').onclick = () => { gridVisible = !gridVisible; drawGrid(); scheduleAutosave(); };
-document.getElementById('btn-snap').onclick = () => { snapEnabled = !snapEnabled; scheduleAutosave(); };
-
-document.getElementById('toggle-3d').onclick = () => {
-  const c2d = document.getElementById('container');
-  const c3d = document.getElementById('three-container');
-  const debug = document.getElementById('debug3d');
-  const btn = document.getElementById('toggle-3d');
-
-  const opening = (c3d.style.display === 'none' || c3d.style.display === '');
+document.getElementById('toggle-3d').onclick=()=>{
+  const c2d=document.getElementById('container');
+  const c3d=document.getElementById('three-container');
+  const debug=document.getElementById('debug3d');
+  const btn=document.getElementById('toggle-3d');
+  const opening = (c3d.style.display==='' || c3d.style.display==='none');
   if(opening){
-    c3d.style.display = 'block';
-    c2d.style.display = 'none';
-    btn.innerText = '返回 2D';
-    debug.style.display = 'block';
-
-    requestAnimationFrame(() => {
+    c3d.style.display='block';
+    c2d.style.display='none';
+    debug.style.display='block';
+    btn.innerText='返回 2D';
+    requestAnimationFrame(()=>{
       init3DIfNeeded();
       resize3D();
       update3D();
@@ -1481,33 +1295,41 @@ document.getElementById('toggle-3d').onclick = () => {
     });
   }else{
     hideInfoCard();
-    c3d.style.display = 'none';
-    c2d.style.display = 'block';
-    btn.innerText = '查看 3D 預覽';
-    debug.style.display = 'none';
+    c3d.style.display='none';
+    c2d.style.display='block';
+    debug.style.display='none';
+    btn.innerText='查看 3D 預覽';
   }
 };
 
-document.getElementById('import-json-input').addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
+document.getElementById('import-json-input').addEventListener('change',(e)=>{
+  const file=e.target.files && e.target.files[0];
   if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
+  const reader=new FileReader();
+  reader.onload=()=>{
     try{ loadDesignFromObject(JSON.parse(reader.result)); toast('已匯入 JSON'); }
     catch(err){ console.error(err); toast('匯入失敗'); }
-    finally{ e.target.value = ''; }
+    finally{ e.target.value=''; }
   };
   reader.readAsText(file);
 });
 
-/* ===========================
- * Boot
- * =========================== */
+window.addEventListener('resize',()=>{
+  stage.width(window.innerWidth-600);
+  stage.height(window.innerHeight);
+  drawGrid();
+  drawRoomBoundary2D();
+  layer.draw();
+  if(is3DVisible()) resize3D();
+});
+
+/* ===== boot ===== */
 renderDeviceCatalog();
 drawGrid();
 drawRoomBoundary2D();
 renderInspector();
 tryLoadFromLocalStorage();
+scheduleCollisionCheck();
 </script>
 </body>
 </html>
