@@ -145,7 +145,7 @@
       <div class="hint" style="margin-top:10px;">
         單位：1格=10cm=100mm（格線10px）<br/>
         3D：點選物件可反選到2D（Shift可多選）<br/>
-        7A：碰撞/走道警示（預設安全距離 100mm）
+        7A v2：橘色距離不足會顯示距離線+mm
       </div>
     </div>
   </aside>
@@ -183,14 +183,9 @@
 </div>
 
 <script>
-/* ===========================
- * Boot UI icons
- * =========================== */
 lucide.createIcons();
 
-/* ===========================
- * Helpers
- * =========================== */
+/* ===== helpers ===== */
 function toast(msg, ms=1200){
   const el=document.getElementById('toast');
   el.textContent=msg; el.style.display='block';
@@ -200,9 +195,7 @@ function safeInt(v,f=0){ const n=parseInt(v,10); return Number.isFinite(n)?n:f; 
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-/* ===========================
- * Units
- * =========================== */
+/* ===== units ===== */
 const GRID_PX=10;
 const MM_PER_GRID=100;
 const MM_PER_PX=MM_PER_GRID/GRID_PX;
@@ -213,11 +206,8 @@ function fmtMm(mm){ return `${Math.round(mm)}mm`; }
 function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
 function snapPx(v){ return Math.round(v/GRID_PX)*GRID_PX; }
 
-/* ===========================
- * Room
- * =========================== */
+/* ===== room ===== */
 const ROOM={ widthMm:6000, depthMm:4000, wallHeightMm:2800, wallThicknessMm:100 };
-
 function focusRoomSettings(){
   selectedNodes=[]; selectedNode=null;
   tr.nodes([]);
@@ -226,25 +216,21 @@ function focusRoomSettings(){
   if(is3DVisible()) update3D();
 }
 
-/* ===========================
- * Device Catalog (mm)
- * =========================== */
+/* ===== device catalog ===== */
 const DEVICE_CATALOG=[
-  { key:'bench', name:'實驗桌', wMm:1200, dMm:600,  hMm:800,  color:'#3b82f6' },
-  { key:'hood',  name:'排煙櫃', wMm:1000, dMm:800,  hMm:2000, color:'#ef4444' },
-  { key:'sink',  name:'洗滌槽', wMm:900,  dMm:600,  hMm:900,  color:'#22c55e' },
-  { key:'fridge', name:'冰箱', wMm:700,  dMm:700,  hMm:1800, color:'#60a5fa' },
-  { key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, color:'#f59e0b' },
-  { key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, color:'#38bdf8' },
-  { key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, color:'#a78bfa' },
+  { key:'bench', name:'實驗桌', wMm:1200, dMm:600,  hMm:800,  accent:'#60a5fa' },
+  { key:'hood',  name:'排煙櫃', wMm:1000, dMm:800,  hMm:2000, accent:'#60a5fa' },
+  { key:'sink',  name:'洗滌槽', wMm:900,  dMm:600,  hMm:900,  accent:'#60a5fa' },
+  { key:'fridge', name:'冰箱', wMm:700,  dMm:700,  hMm:1800, accent:'#22c55e' },
+  { key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, accent:'#38bdf8' },
+  { key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, accent:'#22c55e' },
+  { key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, accent:'#a78bfa' },
 ];
 const DEVICE_BY_KEY=new Map(DEVICE_CATALOG.map(d=>[d.key,d]));
-
 function renderDeviceCatalog(){
   const section=document.getElementById('device-catalog');
   const title=section.querySelector('.tool-section-title');
-  section.innerHTML='';
-  section.appendChild(title);
+  section.innerHTML=''; section.appendChild(title);
   DEVICE_CATALOG.forEach(d=>{
     const div=document.createElement('div');
     div.className='item';
@@ -256,16 +242,25 @@ function renderDeviceCatalog(){
 function addDeviceFromCatalog(key){
   const d=DEVICE_BY_KEY.get(key);
   if(!d) return;
-  addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), d.color, d.key);
+  addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), 'rgba(148,163,184,0.12)', '#1e293b', d.key, d.accent);
 }
 
-/* ===========================
- * 7A collision/clearance (2D)
- * =========================== */
+/* ===== 7A v2 collision/clearance + distance lines ===== */
 const SAFETY_CLEARANCE_MM_DEFAULT=100;
-let collisionPairs=[];
+let collisionPairs=[]; // {aId,bId,type, gapMm, seg:{ax,ay,bx,by}}
 let conflictIds=new Set();
 let collisionTimer=null;
+
+let warningLayer=null;
+let warningLinesGroup=null;
+
+function initWarningLayer(){
+  if(warningLayer) return;
+  warningLayer = new Konva.Layer();
+  stage.add(warningLayer);
+  warningLinesGroup = new Konva.Group({ name:'warnings', listening:false });
+  warningLayer.add(warningLinesGroup);
+}
 
 function scheduleCollisionCheck(){
   clearTimeout(collisionTimer);
@@ -275,15 +270,72 @@ function scheduleCollisionCheck(){
 function rectsOverlap(a,b){
   return !(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y);
 }
-function expandRect(rect, mm){
-  const px=mmToPx(mm);
-  return { x:rect.x-px, y:rect.y-px, width:rect.width+px*2, height:rect.height+px*2 };
+
+function getClosestSegmentBetweenRects(a,b){
+  // Returns closest points (ax,ay) (bx,by) between axis-aligned rectangles (Konva client rects)
+  const ax1=a.x, ax2=a.x+a.width, ay1=a.y, ay2=a.y+a.height;
+  const bx1=b.x, bx2=b.x+b.width, by1=b.y, by2=b.y+b.height;
+
+  // clamp a point from one rect to the other rect
+  function clampPointToRect(px,py, r){
+    const rx1=r.x, rx2=r.x+r.width, ry1=r.y, ry2=r.y+r.height;
+    return {
+      x: clamp(px, rx1, rx2),
+      y: clamp(py, ry1, ry2)
+    };
+  }
+
+  // Candidate points: centers projected to edges
+  const acx=(ax1+ax2)/2, acy=(ay1+ay2)/2;
+  const bcx=(bx1+bx2)/2, bcy=(by1+by2)/2;
+
+  const aToB = clampPointToRect(acx, acy, b);
+  const bToA = clampPointToRect(bcx, bcy, a);
+
+  // Also check edge-to-edge axis separations (horizontal/vertical)
+  // If separated in x direction
+  let best = { ax: bToA.x, ay: bToA.y, bx: aToB.x, by: aToB.y };
+  function dist2(s){
+    const dx=s.ax-s.bx, dy=s.ay-s.by;
+    return dx*dx+dy*dy;
+  }
+  let bestD2 = dist2(best);
+
+  // If one rect is left of the other
+  if(ax2 < bx1){
+    // a right edge to b left edge
+    const y = clamp(acy, by1, by2);
+    const s = { ax: ax2, ay: clamp(y, ay1, ay2), bx: bx1, by: y };
+    const d2 = dist2(s);
+    if(d2 < bestD2){ best=s; bestD2=d2; }
+  } else if(bx2 < ax1){
+    const y = clamp(bcy, ay1, ay2);
+    const s = { ax: ax1, ay: y, bx: bx2, by: clamp(y, by1, by2) };
+    const d2 = dist2(s);
+    if(d2 < bestD2){ best=s; bestD2=d2; }
+  }
+
+  // vertical separation
+  if(ay2 < by1){
+    const x = clamp(acx, bx1, bx2);
+    const s = { ax: clamp(x, ax1, ax2), ay: ay2, bx: x, by: by1 };
+    const d2 = dist2(s);
+    if(d2 < bestD2){ best=s; bestD2=d2; }
+  } else if(by2 < ay1){
+    const x = clamp(bcx, ax1, ax2);
+    const s = { ax: x, ay: ay1, bx: clamp(x, bx1, bx2), by: by2 };
+    const d2 = dist2(s);
+    if(d2 < bestD2){ best=s; bestD2=d2; }
+  }
+
+  return best;
 }
-function getDeviceGroups(){
-  return layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='device');
-}
+
 function recomputeCollisions(){
-  const devices=getDeviceGroups();
+  initWarningLayer();
+  warningLinesGroup.destroyChildren();
+
+  const devices=layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='device');
   collisionPairs=[];
   conflictIds=new Set();
 
@@ -294,7 +346,7 @@ function recomputeCollisions(){
       const rb=B.getClientRect();
 
       if(rectsOverlap(ra, rb)){
-        collisionPairs.push({ aId:A._id, bId:B._id, type:'overlap' });
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'overlap', gapMm: 0, seg:null });
         conflictIds.add(A._id); conflictIds.add(B._id);
         continue;
       }
@@ -303,22 +355,55 @@ function recomputeCollisions(){
       const cb=B.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
       const c=Math.max(ca, cb);
 
-      if(rectsOverlap(expandRect(ra,c), expandRect(rb,c))){
-        collisionPairs.push({ aId:A._id, bId:B._id, type:'clearance' });
+      const seg = getClosestSegmentBetweenRects(ra, rb);
+      const dx = seg.ax - seg.bx, dy = seg.ay - seg.by;
+      const gapPx = Math.sqrt(dx*dx + dy*dy);
+      const gapMm = pxToMm(gapPx);
+
+      if(gapMm < c){
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'clearance', gapMm, needMm: c, seg });
         conflictIds.add(A._id); conflictIds.add(B._id);
+
+        // draw distance line + label
+        const line = new Konva.Line({
+          points:[seg.ax, seg.ay, seg.bx, seg.by],
+          stroke: 'rgba(245, 158, 11, 0.95)',
+          strokeWidth: 2,
+          dash: [8,6]
+        });
+        const midx = (seg.ax + seg.bx)/2;
+        const midy = (seg.ay + seg.by)/2;
+        const text = new Konva.Text({
+          x: midx + 6,
+          y: midy + 6,
+          text: `${gapMm}mm / 需≥${c}mm`,
+          fontSize: 12,
+          fill: '#b45309'
+        });
+        const bg = new Konva.Rect({
+          x: text.x() - 4,
+          y: text.y() - 2,
+          width: text.width() + 8,
+          height: text.height() + 4,
+          fill: 'rgba(255, 237, 213, 0.75)',
+          stroke: 'rgba(245, 158, 11, 0.65)',
+          strokeWidth: 1,
+          cornerRadius: 6
+        });
+
+        warningLinesGroup.add(line, bg, text);
       }
     }
   }
 
   devices.forEach(updateUI);
   layer.draw();
+  warningLayer.draw();
   renderInspector();
   if(is3DVisible()) sync3DConflictHighlight();
 }
 
-/* ===========================
- * Konva 2D
- * =========================== */
+/* ===== Konva 2D base ===== */
 const stage=new Konva.Stage({ container:'container', width:window.innerWidth-600, height:window.innerHeight });
 const gridLayer=new Konva.Layer();
 const layer=new Konva.Layer();
@@ -341,10 +426,9 @@ function drawGrid(){
   for(let y=0;y<=h;y+=GRID_PX) gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
   gridLayer.draw();
 }
-function toggleGrid(){ gridVisible=!gridVisible; drawGrid(); scheduleAutosave(); }
+function toggleGrid(){ gridVisible=!gridVisible; drawGrid(); if(warningLayer) warningLayer.draw(); scheduleAutosave(); }
 function toggleSnap(){ snapEnabled=!snapEnabled; scheduleAutosave(); }
 
-/* room boundary 2D */
 let roomRect2D=null;
 function drawRoomBoundary2D(){
   if(roomRect2D) roomRect2D.destroy();
@@ -370,15 +454,15 @@ let startPos=null;
 
 /* CRUD */
 function addZone(name){
-  createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.1)', '#3b82f6', 'zone');
+  createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.10)', '#3b82f6', 'zone', '#60a5fa');
 }
-function addDevice(name,wPx,dPx,hPx,color,deviceKey){
-  createNode('device', name, wPx, dPx, hPx, color, '#1e293b', deviceKey||'device');
+function addDevice(name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
+  createNode('device', name, wPx, dPx, hPx, fill, stroke, deviceKey||'device', accent || '#60a5fa');
 }
-function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey){
+function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
   const group=new Konva.Group({
     x:100,y:100, draggable:true, name:type,
-    customData:{ height3dPx:hPx||0, deviceKey, clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT }
+    customData:{ height3dPx:hPx||0, deviceKey, clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT, accent: accent || '#60a5fa' }
   });
 
   const rect=new Konva.Rect({ width:wPx, height:dPx, fill, stroke, name:'main-rect', dash: type==='zone' ? [10,5] : [] });
@@ -413,6 +497,7 @@ function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey){
 
   layer.add(group);
   if(type==='zone') group.moveToBottom();
+
   selectSingleNode(group);
   layer.draw();
 
@@ -447,12 +532,10 @@ function updateUI(group){
   const dim=group.findOne('.dim-label');
   const wPx=rect.width()*group.scaleX();
   const dPx=rect.height()*group.scaleY();
-
   dim.text(`${fmtMm(pxToMm(wPx))} x ${fmtMm(pxToMm(dPx))}`);
   dim.x(rect.width()-dim.width()-5);
   dim.y(rect.height()-15);
 
-  // 7A: collision stroke coloring for devices
   if(group.name()==='device'){
     if(conflictIds.has(group._id)){
       const hard = collisionPairs.some(p => p.type==='overlap' && (p.aId===group._id || p.bId===group._id));
@@ -468,9 +551,21 @@ function updateUI(group){
 }
 
 /* selection model */
-function applyTransformer(){ tr.nodes(selectedNodes); layer.draw(); sync3DSelectionHighlight(); if(is3DVisible()) sync3DConflictHighlight(); }
-function clearSelection(){ selectedNodes=[]; selectedNode=null; applyTransformer(); renderInspector(); }
-function selectSingleNode(node){ selectedNodes=[node]; selectedNode=node; applyTransformer(); renderInspector(); }
+function applyTransformer(){
+  tr.nodes(selectedNodes);
+  layer.draw();
+  sync3DSelectionHighlight();
+  if(is3DVisible()) sync3DConflictHighlight();
+}
+function clearSelection(){
+  selectedNodes=[]; selectedNode=null;
+  applyTransformer();
+  renderInspector();
+}
+function selectSingleNode(node){
+  selectedNodes=[node]; selectedNode=node;
+  applyTransformer(); renderInspector();
+}
 function toggleSelectNode(node){
   const idx=selectedNodes.indexOf(node);
   if(idx>=0) selectedNodes.splice(idx,1); else selectedNodes.push(node);
@@ -517,9 +612,7 @@ stage.on('mouseup touchend',(e)=>{
   if(is3DVisible()) update3D();
 });
 
-/* ===========================
- * Inspector
- * =========================== */
+/* inspector */
 function renderInspector(mode){
   const c=document.getElementById('inspector-content');
 
@@ -532,18 +625,20 @@ function renderInspector(mode){
         <div class="prop-group"><label class="prop-label">牆高 (mm)</label><input type="number" value="${ROOM.wallHeightMm}" oninput="updateRoom('wallHeightMm', this.value)"></div>
         <div class="prop-group"><label class="prop-label">牆厚 (mm)</label><input type="number" value="${ROOM.wallThicknessMm}" disabled></div>
       </div>
-      <div class="hint" style="margin-top:10px;">2D 顯示邊界並限制拖曳；3D 生成地板與四面牆。</div>
+      <div class="hint" style="margin-top:10px;">3D 會生成地板與四面牆。</div>
     `;
     return;
   }
 
   if(selectedNodes.length===0){
-    c.innerHTML=`<div class="chip">請選擇物件</div><div class="hint">衝突：<b>${collisionPairs.length}</b> 組（紅=重疊；橘=距離不足）</div>`;
+    c.innerHTML=`<div class="chip">請選擇物件</div>
+      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組（紅=重疊；橘=距離不足）</div>`;
     return;
   }
 
   if(selectedNodes.length>1){
-    c.innerHTML=`<div class="chip">已選取：${selectedNodes.length} 個物件</div><div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
+    c.innerHTML=`<div class="chip">已選取：${selectedNodes.length} 個物件</div>
+      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
       <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取</button>`;
     return;
   }
@@ -560,7 +655,7 @@ function renderInspector(mode){
     <div class="chip">已選取：1 個物件</div>
     <div class="hint" style="margin-top:10px;">
       類別：<b>${escapeHtml(key)}</b><br/>
-      尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
+      尺寸：<b>${fmtMm(pxToMm(wPx))}��${fmtMm(pxToMm(dPx))}</b><br/>
       高度：<b>${fmtCm(pxToMm(hPx))}</b>
     </div>
     <div class="prop-group" style="margin-top:12px;">
@@ -580,7 +675,6 @@ function updateRoom(p,v){
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
-
 function updateClearance(v){
   if(selectedNodes.length!==1) return;
   selectedNodes[0].attrs.customData.clearanceMm = Math.max(0, safeInt(v, SAFETY_CLEARANCE_MM_DEFAULT));
@@ -588,9 +682,7 @@ function updateClearance(v){
   scheduleCollisionCheck();
 }
 
-/* ===========================
- * Export / Delete
- * =========================== */
+/* delete/export */
 function deleteSelected(){
   if(selectedNodes.length===0) return;
   selectedNodes.forEach(n=>n.destroy());
@@ -600,7 +692,6 @@ function deleteSelected(){
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
-
 function exportImg(format){
   tr.nodes([]);
   layer.draw();
@@ -616,12 +707,9 @@ function exportImg(format){
   }
 }
 
-/* ===========================
- * Save/Load JSON
- * =========================== */
+/* save/load */
 const STORAGE_KEY='labcad_design_v1';
 let autosaveTimer=null;
-
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
   autosaveTimer=setTimeout(()=>{
@@ -629,14 +717,12 @@ function scheduleAutosave(){
     catch(err){ console.error(err); toast('自動保存失敗'); }
   }, 150);
 }
-
 function serializeNode(group){
   const r=group.findOne('.main-rect');
   const title=group.findOne('.title-text');
   const wPx=r.width()*group.scaleX();
   const dPx=r.height()*group.scaleY();
   const hPx=group.attrs.customData?.height3dPx||0;
-
   return {
     type: group.name(),
     key: group.attrs.customData?.deviceKey || group.name(),
@@ -650,14 +736,14 @@ function serializeNode(group){
     stroke: r.stroke(),
     dash: r.dash(),
     hMm: pxToMm(hPx),
-    clearanceMm: group.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT
+    clearanceMm: group.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT,
+    accent: group.attrs.customData?.accent ?? '#60a5fa'
   };
 }
-
 function getDesignJSON(){
   const nodes=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).map(serializeNode);
   return {
-    version: 80,
+    version: 81,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
     room: { ...ROOM },
@@ -666,7 +752,6 @@ function getDesignJSON(){
     nodes
   };
 }
-
 function downloadText(filename,text,mime='application/json'){
   const blob=new Blob([text],{type:mime});
   const url=URL.createObjectURL(blob);
@@ -690,20 +775,19 @@ document.getElementById('import-json-input').addEventListener('change',(e)=>{
   };
   reader.readAsText(file);
 });
-
 function resetDesign(clearLS=false){
   layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g=>g.destroy());
   selectionRect.visible(false);
   clearSelection();
   layer.draw();
   if(clearLS){ localStorage.removeItem(STORAGE_KEY); toast('已清空設計'); }
+  if(warningLinesGroup) warningLinesGroup.destroyChildren();
   scheduleCollisionCheck();
+  if(warningLayer) warningLayer.draw();
   if(is3DVisible()) update3D();
 }
-
 function loadDesignFromObject(design){
   resetDesign(false);
-
   if(design?.room){
     ROOM.widthMm = design.room.widthMm ?? ROOM.widthMm;
     ROOM.depthMm = design.room.depthMm ?? ROOM.depthMm;
@@ -714,13 +798,11 @@ function loadDesignFromObject(design){
     gridVisible = design.ui.gridVisible ?? gridVisible;
     snapEnabled = design.ui.snapEnabled ?? snapEnabled;
   }
-
   (design?.nodes||[]).forEach(n=>{
     const type=n.type==='zone'?'zone':'device';
     const stroke=n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
     const dash=Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
-    const fill=n.fill || (type==='zone' ? 'rgba(59,130,246,0.1)' : '#3b82f6');
-
+    const fill=n.fill || (type==='zone' ? 'rgba(59,130,246,0.10)' : 'rgba(148,163,184,0.12)');
     const group=new Konva.Group({
       x: mmToPx(Number(n.xMm)||0),
       y: mmToPx(Number(n.yMm)||0),
@@ -729,19 +811,17 @@ function loadDesignFromObject(design){
       customData:{
         height3dPx: mmToPx(Number(n.hMm)||0),
         deviceKey: n.key || type,
-        clearanceMm: Number(n.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT)
+        clearanceMm: Number(n.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT),
+        accent: n.accent ?? '#60a5fa'
       }
     });
-
     const rect=new Konva.Rect({
       width: mmToPx(Math.max(100, Number(n.wMm)||1000)),
       height: mmToPx(Math.max(100, Number(n.dMm)||1000)),
       fill, stroke, name:'main-rect', dash
     });
-
     const title=new Konva.Text({ text:n.name||'', fontSize:14, fill:stroke, padding:8, name:'title-text' });
     const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
-
     group.rotation(Number(n.rot)||0);
     group.add(rect,title,dim);
     updateUI(group);
@@ -772,14 +852,11 @@ function loadDesignFromObject(design){
     if(type==='zone') group.moveToBottom();
   });
 
-  drawGrid();
-  drawRoomBoundary2D();
-  layer.draw();
+  drawGrid(); drawRoomBoundary2D(); layer.draw();
   scheduleAutosave();
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
-
 function tryLoadFromLocalStorage(){
   const raw=localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
@@ -787,14 +864,7 @@ function tryLoadFromLocalStorage(){
   catch(err){ console.warn(err); }
 }
 
-/* ===========================
- * 3D: rounded geometry (approx) + prefabs
- * =========================== */
-/**
- * Simplified rounded box geometry using Shape + ExtrudeGeometry.
- * - No modules needed
- * - Looks rounded enough for your "near-real" style
- */
+/* ===== 3D rounded geometry (approx) ===== */
 function createRoundedRectShape(w, h, r){
   const x = -w/2, y = -h/2;
   const shape = new THREE.Shape();
@@ -810,221 +880,260 @@ function createRoundedRectShape(w, h, r){
   shape.quadraticCurveTo(x, y, x + rr, y);
   return shape;
 }
-
-function makeRoundedBox(w, h, d, radius, smoothSteps=4){
-  // Build as extruded rounded rectangle along depth
+function makeRoundedBoxGeo(w, h, d, radius, smoothSteps=5){
   const shape = createRoundedRectShape(w, h, radius);
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: d,
-    bevelEnabled: false,
-    curveSegments: smoothSteps
-  });
-  // Center geometry: extrude goes +Z, so shift to center
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled:false, curveSegments: smoothSteps });
   geo.translate(0, 0, -d/2);
   geo.computeVertexNormals();
   return geo;
 }
 
-function matStd(hex, opts={}){
-  return new THREE.MeshStandardMaterial({
-    color: new THREE.Color(hex),
-    roughness: opts.roughness ?? 0.72,
-    metalness: opts.metalness ?? 0.05,
-    transparent: !!opts.transparent,
-    opacity: opts.opacity ?? 1
-  });
+/* unified materials like screenshot style */
+const MAT = {
+  body: new THREE.MeshStandardMaterial({ color:0xf1f5f9, roughness:0.85, metalness:0.02 }),
+  body2: new THREE.MeshStandardMaterial({ color:0xe5e7eb, roughness:0.85, metalness:0.02 }),
+  base: new THREE.MeshStandardMaterial({ color:0x334155, roughness:0.92, metalness:0.08 }),
+  base2: new THREE.MeshStandardMaterial({ color:0x111827, roughness:0.95, metalness:0.02 }),
+  metal: new THREE.MeshStandardMaterial({ color:0xcbd5e1, roughness:0.28, metalness:0.75 }),
+  glass: new THREE.MeshStandardMaterial({ color:0x93c5fd, transparent:true, opacity:0.18, roughness:0.12, metalness:0.0 }),
+  panelBlue: (function(){
+    const m = new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.5, metalness:0.05 });
+    m.emissive = new THREE.Color(0x60a5fa);
+    m.emissiveIntensity = 0.85;
+    return m;
+  })()
+};
+
+function makeAccentMat(hex){
+  // non-emissive accent stripe
+  return new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), roughness:0.55, metalness:0.08 });
 }
 
-function matPanel(){
-  const m = matStd('#0b1220', { roughness:0.5, metalness:0.05 });
-  m.emissive = new THREE.Color(0x60a5fa);
-  m.emissiveIntensity = 0.85;
-  return m;
+function addAccentStripe(root, x,y,z, w,h, accentHex){
+  const geo = makeRoundedBoxGeo(w,h,6, Math.min(6,w*0.25), 3);
+  const mesh = new THREE.Mesh(geo, makeAccentMat(accentHex));
+  mesh.position.set(x,y,z);
+  mesh.castShadow = false;
+  root.add(mesh);
 }
 
-function addHandle(root, x, y, z, len){
+function addDoorPanel(root, x,y,z, w,h, radius){
+  const geo = makeRoundedBoxGeo(w,h,6, Math.min(10,radius), 4);
+  const mesh = new THREE.Mesh(geo, MAT.body2);
+  mesh.position.set(x,y,z);
+  root.add(mesh);
+}
+
+function addHandle(root, x,y,z, len){
   const geo = new THREE.CylinderGeometry(7,7,len,12);
-  const mat = matStd('#cbd5e1', { roughness:0.28, metalness:0.75 });
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(x,y,z);
-  m.castShadow = true;
-  root.add(m);
+  const mesh = new THREE.Mesh(geo, MAT.metal);
+  mesh.position.set(x,y,z);
+  mesh.castShadow = true;
+  root.add(mesh);
 }
 
-function addPanel(root, x, y, z, w, h){
-  const geo = makeRoundedBox(w, h, 10, Math.min(8, w*0.08), 3);
-  const m = new THREE.Mesh(geo, matPanel());
-  m.position.set(x,y,z);
-  m.castShadow = false;
-  root.add(m);
+function addPanel(root, x,y,z, w,h){
+  const geo = makeRoundedBoxGeo(w,h,10, Math.min(8,w*0.08), 3);
+  const mesh = new THREE.Mesh(geo, MAT.panelBlue);
+  mesh.position.set(x,y,z);
+  mesh.castShadow = false;
+  root.add(mesh);
 }
 
 function buildBench3D(w,d,h){
-  const root = new THREE.Group();
-  const topGeo = makeRoundedBox(w, 44, d, 16, 4);
-  const top = new THREE.Mesh(topGeo, matStd('#f1f5f9', { roughness:0.88, metalness:0.02 }));
-  top.position.set(0, h - 22, 0);
-  top.castShadow = true; top.receiveShadow = true;
+  const root=new THREE.Group();
+  const topGeo=makeRoundedBoxGeo(w,44,d,16,5);
+  const top=new THREE.Mesh(topGeo, MAT.body);
+  top.position.set(0,h-22,0);
   root.add(top);
 
-  const legH = h - 70;
-  const legGeo = makeRoundedBox(28, legH, 28, 6, 2);
-  const legMat = matStd('#334155', { roughness:0.92, metalness:0.08 });
-  [[-w/2+26, legH/2, -d/2+26],[w/2-26, legH/2, -d/2+26],[-w/2+26, legH/2, d/2-26],[w/2-26, legH/2, d/2-26]]
-    .forEach(([x,y,z])=>{
-      const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(x,y,z);
-      leg.castShadow = true;
-      root.add(leg);
-    });
+  const legH=h-70;
+  const legGeo=makeRoundedBoxGeo(22,legH,22,6,3);
+  [[-w/2+22, legH/2, -d/2+22],[w/2-22, legH/2, -d/2+22],[-w/2+22, legH/2, d/2-22],[w/2-22, legH/2, d/2-22]].forEach(([x,y,z])=>{
+    const leg=new THREE.Mesh(legGeo, MAT.base);
+    leg.position.set(x,y,z);
+    root.add(leg);
+  });
 
-  return { root, pickHeight: h };
-}
-
-function buildCabinet3D(w,d,h,bodyHex,withGlass){
-  const root = new THREE.Group();
-  const radius = Math.min(22, Math.min(w,d)*0.08);
-
-  const bodyGeo = makeRoundedBox(w, h, d, radius, 5);
-  const body = new THREE.Mesh(bodyGeo, matStd(bodyHex, { roughness:0.78, metalness:0.05 }));
-  body.position.set(0, h/2, 0);
-  body.castShadow = true; body.receiveShadow = true;
-  root.add(body);
-
-  // door seam
-  const seamGeo = makeRoundedBox(w*0.9, h*0.88, 2, Math.min(12, radius), 3);
-  const seam = new THREE.Mesh(seamGeo, matStd('#0b1220', { roughness:1.0, metalness:0.0, transparent:true, opacity:0.55 }));
-  seam.position.set(0, h/2, d/2 + 1);
-  root.add(seam);
-
-  // handle
-  addHandle(root, w/2 - 36, h/2, d/2 + 14, h*0.45);
-
-  // top panel
-  addPanel(root, 0, h - 120, d/2 + 12, w*0.5, 74);
-
-  if(withGlass){
-    const glassGeo = makeRoundedBox(w*0.82, h*0.74, 8, Math.min(18, radius), 4);
-    const glass = new THREE.Mesh(glassGeo, matStd('#93c5fd', { transparent:true, opacity:0.16, roughness:0.15, metalness:0.0 }));
-    glass.position.set(0, h/2, d/2 + 8);
-    glass.castShadow = false;
-    root.add(glass);
+  // small corner pads (like screws)
+  const padGeo = new THREE.CylinderGeometry(4,4,4,10);
+  for(const [x,z] of [[-w/2+14,-d/2+14],[w/2-14,-d/2+14],[-w/2+14,d/2-14],[w/2-14,d/2-14]]){
+    const pad=new THREE.Mesh(padGeo, MAT.base2);
+    pad.position.set(x,h-4,z);
+    root.add(pad);
   }
 
-  return { root, pickHeight: h };
+  return { root, pickHeight:h };
 }
 
-function buildCentrifuge3D(w,d,h){
-  const root = new THREE.Group();
-  const baseH = h*0.55;
+function buildFridgeLike3D(w,d,h, accentHex){
+  const root=new THREE.Group();
+  const radius=Math.min(22, Math.min(w,d)*0.08);
 
-  const baseGeo = makeRoundedBox(w, baseH, d, Math.min(18, Math.min(w,d)*0.08), 4);
-  const base = new THREE.Mesh(baseGeo, matStd('#f1f5f9', { roughness:0.82 }));
-  base.position.set(0, baseH/2, 0);
-  base.castShadow = true; base.receiveShadow = true;
+  // dark base plinth
+  const plinthGeo = makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3);
+  const plinth = new THREE.Mesh(plinthGeo, MAT.base);
+  plinth.position.set(0, 20, 0);
+  root.add(plinth);
+
+  // main body
+  const bodyGeo=makeRoundedBoxGeo(w,h,d,radius,6);
+  const body=new THREE.Mesh(bodyGeo, MAT.body);
+  body.position.set(0,h/2 + 40,0);
+  root.add(body);
+
+  // door panel (style 1: full flat panel)
+  addDoorPanel(root, 0, h/2 + 40, d/2 + 4, w*0.9, h*0.88, radius);
+
+  // handle
+  addHandle(root, w/2 - 36, h/2 + 40, d/2 + 16, h*0.45);
+
+  // top control panel
+  addPanel(root, 0, h + 40 - 120, d/2 + 14, w*0.5, 74);
+
+  // accent stripe (like image3 green stripe)
+  addAccentStripe(root, w*0.22, h + 40 - 170, d/2 + 16, w*0.35, 20, accentHex);
+
+  return { root, pickHeight: h + 40 };
+}
+
+function buildIncubator3D(w,d,h, accentHex){
+  const root = new THREE.Group();
+  const radius=Math.min(22, Math.min(w,d)*0.08);
+
+  const baseGeo = makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3);
+  const base = new THREE.Mesh(baseGeo, MAT.base);
+  base.position.set(0, 20, 0);
   root.add(base);
 
-  const lid = new THREE.Mesh(
-    new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 28),
-    matStd('#cbd5e1', { roughness:0.55, metalness:0.08 })
-  );
+  const bodyGeo=makeRoundedBoxGeo(w,h,d,radius,6);
+  const body=new THREE.Mesh(bodyGeo, MAT.body);
+  body.position.set(0,h/2 + 40,0);
+  root.add(body);
+
+  // glass door overlay
+  const glassGeo=makeRoundedBoxGeo(w*0.82, h*0.74, 8, Math.min(18,radius), 5);
+  const glass=new THREE.Mesh(glassGeo, MAT.glass);
+  glass.position.set(0, h/2 + 40, d/2 + 10);
+  root.add(glass);
+
+  addPanel(root, 0, h + 40 - 120, d/2 + 14, w*0.5, 74);
+  addAccentStripe(root, w*0.22, h + 40 - 170, d/2 + 16, w*0.35, 20, accentHex);
+
+  addHandle(root, w/2 - 36, h/2 + 40, d/2 + 16, h*0.45);
+
+  return { root, pickHeight: h + 40 };
+}
+
+function buildCentrifuge3D(w,d,h, accentHex){
+  const root=new THREE.Group();
+  // dark base
+  const baseH = h*0.55;
+  const baseGeo=makeRoundedBoxGeo(w, baseH, d, Math.min(18,Math.min(w,d)*0.08), 5);
+  const base=new THREE.Mesh(baseGeo, MAT.base);
+  base.position.set(0, baseH/2, 0);
+  root.add(base);
+
+  // white lid
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 28), MAT.body2);
   lid.position.set(0, baseH + (h*0.14), 0);
-  lid.castShadow = true;
   root.add(lid);
 
-  addPanel(root, w*0.22, baseH*0.65, d/2 + 14, w*0.38, h*0.22);
+  // front panel + accent
+  addPanel(root, w*0.18, baseH*0.65, d/2 + 14, w*0.42, h*0.22);
+  addAccentStripe(root, -w*0.15, baseH*0.55, d/2 + 14, w*0.28, 18, accentHex);
 
   return { root, pickHeight: h };
 }
 
-function buildSink3D(w,d,h){
-  const root = new THREE.Group();
+function buildSink3D(w,d,h, accentHex){
+  const root=new THREE.Group();
+  // cabinet base (dark-ish)
+  const cabGeo=makeRoundedBoxGeo(w*0.92, h-60, d*0.92, 16, 5);
+  const cab=new THREE.Mesh(cabGeo, MAT.body2);
+  cab.position.set(0, (h-60)/2, 0);
+  root.add(cab);
 
-  const topGeo = makeRoundedBox(w, 44, d, 16, 4);
-  const top = new THREE.Mesh(topGeo, matStd('#f1f5f9', { roughness:0.9 }));
+  // countertop
+  const topGeo=makeRoundedBoxGeo(w, 44, d, 16, 6);
+  const top=new THREE.Mesh(topGeo, MAT.body);
   top.position.set(0, h - 22, 0);
-  top.castShadow = true; top.receiveShadow = true;
   root.add(top);
 
-  const basinGeo = makeRoundedBox(w*0.55, 26, d*0.45, 14, 3);
-  const basin = new THREE.Mesh(basinGeo, matStd('#cbd5e1', { roughness:0.4, metalness:0.28 }));
+  // basin inset
+  const basinGeo=makeRoundedBoxGeo(w*0.55, 26, d*0.45, 14, 5);
+  const basin=new THREE.Mesh(basinGeo, MAT.base2);
   basin.position.set(-w*0.08, h - 30, 0);
   root.add(basin);
 
-  const post = new THREE.Mesh(
-    new THREE.CylinderGeometry(10,10,120,14),
-    matStd('#94a3b8', { roughness:0.3, metalness:0.75 })
-  );
+  // faucet
+  const post=new THREE.Mesh(new THREE.CylinderGeometry(10,10,120,14), MAT.metal);
   post.position.set(w*0.2, h + 30, 0);
-  post.castShadow = true;
   root.add(post);
 
-  const spout = new THREE.Mesh(
-    new THREE.CylinderGeometry(8,8,120,14),
-    post.material
-  );
+  const spout=new THREE.Mesh(new THREE.CylinderGeometry(8,8,120,14), MAT.metal);
   spout.rotation.z = Math.PI/2;
   spout.position.set(w*0.2 + 55, h + 70, 0);
-  spout.castShadow = true;
   root.add(spout);
 
-  const cabGeo = makeRoundedBox(w*0.92, h-60, d*0.92, 16, 4);
-  const cab = new THREE.Mesh(cabGeo, matStd('#f8fafc', { roughness:0.9 }));
-  cab.position.set(0, (h-60)/2, 0);
-  cab.castShadow = true;
-  root.add(cab);
-
+  // cabinet handle + accent stripe
   addHandle(root, w*0.35, (h-60)/2, d/2 + 14, (h-60)*0.35);
+  addAccentStripe(root, -w*0.18, (h-60)/2, d/2 + 14, w*0.28, 18, accentHex);
 
   return { root, pickHeight: h };
 }
 
-function buildHood3D(w,d,h){
-  const root = new THREE.Group();
-  const radius = Math.min(22, Math.min(w,d)*0.08);
+function buildHood3D(w,d,h, accentHex){
+  const root=new THREE.Group();
+  const radius=Math.min(22, Math.min(w,d)*0.08);
 
-  const bodyGeo = makeRoundedBox(w, h, d, radius, 5);
-  const body = new THREE.Mesh(bodyGeo, matStd('#f1f5f9', { roughness:0.9 }));
-  body.position.set(0, h/2, 0);
-  body.castShadow = true; body.receiveShadow = true;
-  root.add(body);
-
-  const glassGeo = makeRoundedBox(w*0.9, h*0.55, 10, Math.min(16, radius), 4);
-  const glass = new THREE.Mesh(glassGeo, matStd('#93c5fd', { transparent:true, opacity:0.18, roughness:0.12, metalness:0.0 }));
-  glass.position.set(0, h*0.55, d/2 + 12);
-  glass.castShadow = false;
-  root.add(glass);
-
-  addPanel(root, 0, h - 140, d/2 + 16, w*0.6, 84);
-
-  const baseGeo = makeRoundedBox(w, 46, d, 14, 3);
-  const base = new THREE.Mesh(baseGeo, matStd('#94a3b8', { roughness:0.95, metalness:0.05 }));
+  // base plinth
+  const baseGeo=makeRoundedBoxGeo(w, 46, d, 14, 5);
+  const base=new THREE.Mesh(baseGeo, MAT.base);
   base.position.set(0, 23, 0);
-  base.castShadow = true;
   root.add(base);
 
-  return { root, pickHeight: h };
+  // body
+  const bodyGeo=makeRoundedBoxGeo(w, h, d, radius, 6);
+  const body=new THREE.Mesh(bodyGeo, MAT.body);
+  body.position.set(0, h/2 + 46, 0);
+  root.add(body);
+
+  // front frame (slightly darker)
+  const frameGeo=makeRoundedBoxGeo(w*0.92, h*0.6, 14, 12, 5);
+  const frame=new THREE.Mesh(frameGeo, MAT.body2);
+  frame.position.set(0, h*0.58, d/2 + 6);
+  root.add(frame);
+
+  // glass
+  const glassGeo=makeRoundedBoxGeo(w*0.86, h*0.52, 10, 12, 5);
+  const glass=new THREE.Mesh(glassGeo, MAT.glass);
+  glass.position.set(0, h*0.58, d/2 + 10);
+  root.add(glass);
+
+  // panel + accent
+  addPanel(root, 0, h + 46 - 140, d/2 + 16, w*0.6, 84);
+  addAccentStripe(root, w*0.22, h + 46 - 190, d/2 + 16, w*0.35, 20, accentHex);
+
+  return { root, pickHeight: h + 46 };
 }
 
-function buildPrefab3D(key,w,d,h){
+function buildPrefab3D(key,w,d,h, accentHex){
   switch(key){
     case 'bench': return buildBench3D(w,d,mmToPx(800));
-    case 'fridge': return buildCabinet3D(w,d,h,'#f8fafc',false);
-    case 'ultra_low_freezer': return buildCabinet3D(w,d,h,'#e2e8f0',false);
-    case 'incubator': return buildCabinet3D(w,d,h,'#f8fafc',true);
-    case 'centrifuge': return buildCentrifuge3D(w,d,h);
-    case 'sink': return buildSink3D(w,d,mmToPx(900));
-    case 'hood': return buildHood3D(w,d,h);
-    default: return buildCabinet3D(w,d,h,'#e5e7eb',false);
+    case 'fridge': return buildFridgeLike3D(w,d,h,accentHex);
+    case 'ultra_low_freezer': return buildFridgeLike3D(w,d,h,accentHex);
+    case 'incubator': return buildIncubator3D(w,d,h,accentHex);
+    case 'centrifuge': return buildCentrifuge3D(w,d,h,accentHex);
+    case 'sink': return buildSink3D(w,d,mmToPx(900),accentHex);
+    case 'hood': return buildHood3D(w,d,h,accentHex);
+    default: return buildFridgeLike3D(w,d,h,accentHex);
   }
 }
 
-/* ===========================
- * 3D Engine (non-module)
- * =========================== */
+/* ===== 3D engine ===== */
 let sc, cam, rend, ctrl;
 let objectsGroup, roomGroup3D, groundMesh, dirLight;
-
 const threeMap=new Map();
 const pickables=[];
 const raycaster=new THREE.Raycaster();
@@ -1125,13 +1234,11 @@ function buildRoom3D(){
   const wallS=new THREE.Mesh(wallGeo1, wallMat); wallS.position.set(0,wallH/2,d/2);
   const wallW=new THREE.Mesh(wallGeo2, wallMat); wallW.position.set(-w/2,wallH/2,0);
   const wallE=new THREE.Mesh(wallGeo2, wallMat); wallE.position.set(w/2,wallH/2,0);
-
   [wallN,wallS,wallW,wallE].forEach(wm=>{ wm.castShadow=true; wm.receiveShadow=true; roomGroup3D.add(wm); });
 }
 
 function update3D(){
   if(!sc) return;
-
   buildRoom3D();
 
   while(objectsGroup.children.length) objectsGroup.remove(objectsGroup.children[0]);
@@ -1143,7 +1250,6 @@ function update3D(){
   const cy=rr.y+rr.height/2;
 
   const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
-
   groups.forEach(n=>{
     const r=n.findOne('.main-rect');
     const wPx=r.width()*n.scaleX();
@@ -1155,22 +1261,21 @@ function update3D(){
 
     const id=n._id;
     const key=n.attrs.customData?.deviceKey || n.name();
+    const accent=n.attrs.customData?.accent || '#60a5fa';
 
     if(n.name()==='device'){
-      const prefab=buildPrefab3D(key,wPx,dPx,hPx);
+      const prefab=buildPrefab3D(key,wPx,dPx,hPx,accent);
       const root=prefab.root;
       root.position.set(x3d,0,z3d);
       root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
       root.traverse(obj=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; }});
 
-      // pick volume
       const pickGeo=new THREE.BoxGeometry(wPx, prefab.pickHeight || hPx, dPx);
       const pickMesh=new THREE.Mesh(pickGeo, new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 }));
       pickMesh.position.set(0,(prefab.pickHeight||hPx)/2,0);
       pickMesh.userData={ konvaId:id, kind:'device' };
       root.add(pickMesh);
 
-      // outline
       const outline=new THREE.LineSegments(new THREE.EdgesGeometry(pickGeo), new THREE.LineBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95 }));
       outline.position.copy(pickMesh.position);
       outline.visible=false;
@@ -1207,7 +1312,6 @@ function update3D(){
 }
 
 function fitCameraToRoom(){
-  if(!cam||!ctrl) return;
   const maxDim=Math.max(mmToPx(ROOM.widthMm), mmToPx(ROOM.depthMm));
   ctrl.target.set(0,0,0);
   const fov=cam.fov*(Math.PI/180);
@@ -1255,7 +1359,6 @@ function animate3D(){
     rend.render(sc, cam);
   }
 }
-
 function updateDebug3D(){
   const el=document.getElementById('debug3d');
   if(!el || !is3DVisible()) return;
@@ -1263,14 +1366,11 @@ function updateDebug3D(){
   el.textContent=`3D: ${w}x${h}\nObjects: ${threeMap.size}\nConflicts: ${collisionPairs.length}\n`;
 }
 
-/* picking + info card */
+/* 3D picking + info card */
 function onPointerDown3D(e){
   if(!is3DVisible() || !cam) return;
   const rect=rend.domElement.getBoundingClientRect();
-  pointer.set(
-    ((e.clientX-rect.left)/rect.width)*2-1,
-    -(((e.clientY-rect.top)/rect.height)*2-1)
-  );
+  pointer.set(((e.clientX-rect.left)/rect.width)*2-1, -(((e.clientY-rect.top)/rect.height)*2-1));
   raycaster.setFromCamera(pointer, cam);
 
   const hits=raycaster.intersectObjects(pickables,false);
@@ -1279,7 +1379,6 @@ function onPointerDown3D(e){
     if(!e.shiftKey){ clearSelection(); layer.draw(); }
     return;
   }
-
   const id=hits[0].object.userData?.konvaId;
   const node=layer.getChildren().find(n=>n instanceof Konva.Group && n._id===id);
   if(!node) return;
@@ -1288,7 +1387,7 @@ function onPointerDown3D(e){
   else selectSingleNode(node);
 
   layer.draw();
-  showInfoCardFor(node, { x:e.clientX, y:e.clientY });
+  showInfoCardFor(node,{x:e.clientX,y:e.clientY});
 }
 
 function getNodeSizeMm(node){
@@ -1298,11 +1397,10 @@ function getNodeSizeMm(node){
   const hPx=node.attrs.customData?.height3dPx||0;
   return { wMm:pxToMm(wPx), dMm:pxToMm(dPx), hMm:pxToMm(hPx) };
 }
-
-function showInfoCardFor(node, pt){
+function showInfoCardFor(node,pt){
   const card=document.getElementById('info-card');
   const name=node.findOne('.title-text')?.text()||'';
-  const key=node.attrs.customData?.deviceKey || node.name();
+  const key=node.attrs.customData?.deviceKey||node.name();
   const size=getNodeSizeMm(node);
 
   card.innerHTML=`
@@ -1313,19 +1411,15 @@ function showInfoCardFor(node, pt){
   `;
   card.style.display='block';
 
-  const vw=window.innerWidth, vh=window.innerHeight;
-  const cw=320, ch=150;
-  let left=pt.x+14, top=pt.y+14;
+  const vw=window.innerWidth,vh=window.innerHeight;
+  const cw=320,ch=150;
+  let left=pt.x+14,top=pt.y+14;
   if(left+cw>vw) left=pt.x-cw-14;
   if(top+ch>vh) top=pt.y-ch-14;
   card.style.left=`${left}px`;
   card.style.top=`${top}px`;
 }
-
-function hideInfoCard(){
-  const card=document.getElementById('info-card');
-  if(card) card.style.display='none';
-}
+function hideInfoCard(){ document.getElementById('info-card').style.display='none'; }
 
 /* toggle 3D */
 function toggle3D(){
@@ -1358,8 +1452,7 @@ function toggle3D(){
 /* hotkeys */
 window.addEventListener('keydown',(e)=>{
   const tag=document.activeElement?.tagName?.toLowerCase();
-  const typing = tag==='input' || tag==='textarea';
-
+  const typing=tag==='input'||tag==='textarea';
   if(e.key==='Escape'){
     hideInfoCard();
     clearSelection();
@@ -1367,10 +1460,9 @@ window.addEventListener('keydown',(e)=>{
     sync3DSelectionHighlight();
     return;
   }
-  if(!typing && (e.key==='Delete' || e.key==='Backspace')){
+  if(!typing && (e.key==='Delete'||e.key==='Backspace')){
     deleteSelected();
     e.preventDefault();
-    return;
   }
 });
 
@@ -1381,10 +1473,11 @@ window.addEventListener('resize',()=>{
   drawGrid();
   drawRoomBoundary2D();
   layer.draw();
+  if(warningLayer) warningLayer.draw();
   if(is3DVisible()) resize3D();
 });
 
-/* init */
+/* boot */
 renderDeviceCatalog();
 drawGrid();
 drawRoomBoundary2D();
