@@ -23,7 +23,6 @@
     body{ margin:0; font-family: ui-sans-serif,system-ui,'Segoe UI'; background:var(--bg-dark); color:var(--text); overflow:hidden; }
     .app{ display:grid; grid-template-columns:320px 1fr 320px; height:100vh; }
 
-    /* sidebar */
     .sidebar{ background:linear-gradient(180deg,var(--bg-sidebar),var(--sidebar2)); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
     .sidebar-header{ padding:16px 16px 10px; background:rgba(17,24,39,.9); font-weight:800; border-bottom:1px solid rgba(148,163,184,.12); }
     .library-title{ font-size:14px; letter-spacing:.06em; color:#e2e8f0; }
@@ -63,6 +62,12 @@
     .lib-icon{
       width:26px; height:26px; display:flex; align-items:center; justify-content:center;
       border-radius:8px; background:rgba(59,130,246,.14); color:#93c5fd;
+      font-size:14px;
+    }
+    .dot{
+      width:12px; height:12px; border-radius:999px; margin-left:2px;
+      border:1px solid rgba(255,255,255,.22);
+      box-shadow: 0 0 0 3px rgba(2,6,23,.25);
     }
     .lib-name{ font-weight:800; color:#e2e8f0; font-size:14px; line-height:1.1; }
     .lib-sub{ font-size:12px; color:#94a3b8; margin-top:2px; }
@@ -79,7 +84,6 @@
       font-size:12px; font-weight:700;
     }
 
-    /* canvas + inspector */
     .canvas-area{ position:relative; background:#f1f5f9; }
     #container,#three-container{ width:100%; height:100%; }
     #three-container{ position:absolute; top:0; left:0; display:none; z-index:60; background:#0a0f1a; }
@@ -102,8 +106,7 @@
       border:1px solid rgba(148,163,184,.18);
       color:#e2e8f0; font-size:12px; user-select:none;
     }
-    .prop-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
-    .prop-group{ display:flex; flex-direction:column; gap:4px; }
+    .prop-group{ display:flex; flex-direction:column; gap:4px; margin-top:12px; }
     .prop-label{ font-size:.7rem; color:#94a3b8; text-transform:uppercase; }
     input{ background:#020617; border:1px solid rgba(148,163,184,.22); color:#fff; padding:8px; border-radius:10px; font-size:.9rem; }
     .btn-action{
@@ -175,7 +178,6 @@
 
     <div class="tab-panel">
       <div class="panel-inner">
-        <!-- DEVICES -->
         <div id="tab-devices">
           <div class="group-title" data-collapse="grp-instruments">
             <div>🔬 儀器設備</div><div style="color:#64748b">▾</div>
@@ -193,26 +195,18 @@
           </div>
         </div>
 
-        <!-- ZONES -->
         <div id="tab-zones" style="display:none;">
-          <div class="lib-item" data-action="place-zone" data-icon="square" data-name="規劃區域" data-sub="3000×2000mm（可縮放）">
-            <div class="lib-icon">⬚</div>
-            <div>
-              <div class="lib-name">新增區域</div>
-              <div class="lib-sub">3000×2000mm（可縮放）</div>
-            </div>
-          </div>
+          <div id="zone-items"></div>
           <div class="hint">
-            點「新增區域」後，在畫布點一下放置。<br/>
-            區域可縮放、可框選多個設備。
+            點選區域類型後，在畫布上點擊放置（可縮放/旋轉）。<br/>
+            區域可用來分區與標示用途。
           </div>
         </div>
 
-        <!-- WALLS -->
         <div id="tab-walls" style="display:none;">
           <div id="wall-items"></div>
           <div class="hint">
-            點選牆壁類型後，在畫布上點擊放置。<br/>
+            點選牆壁類型後，在畫布上點擊放置（可縮放/旋轉）。<br/>
             設備靠近牆邊會自動貼齊（吸附）。
           </div>
         </div>
@@ -222,8 +216,7 @@
     <div style="padding:16px; border-top:1px solid rgba(148,163,184,.12);">
       <button class="btn-action" style="background:var(--accent);" id="toggle-3d">查看 3D 預覽</button>
       <div class="hint" style="margin-top:10px;">
-        單位：1格=10cm=100mm（格線10px）<br/>
-        3D：點選物件可反選到2D（Shift可多選）<br/>
+        目前已「移除房間」：不再有限制框與 3D 四面牆。<br/>
         7A v2：橘色距離不足顯示距離線+mm
       </div>
     </div>
@@ -262,10 +255,9 @@
 </div>
 
 <script>
-/* ========== Icons ========== */
 lucide.createIcons();
 
-/* ========== Helpers ========== */
+/* helpers */
 function toast(msg, ms=1200){
   const el=document.getElementById('toast');
   el.textContent=msg; el.style.display='block';
@@ -275,7 +267,7 @@ function safeInt(v,f=0){ const n=parseInt(v,10); return Number.isFinite(n)?n:f; 
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-/* ========== Units ========== */
+/* units */
 const GRID_PX=10;
 const MM_PER_GRID=100;
 const MM_PER_PX=MM_PER_GRID/GRID_PX;
@@ -286,10 +278,7 @@ function fmtMm(mm){ return `${Math.round(mm)}mm`; }
 function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
 function snapPx(v){ return Math.round(v/GRID_PX)*GRID_PX; }
 
-/* ========== Room (FIXED, no UI) ========== */
-const ROOM={ widthMm:6000, depthMm:4000, wallHeightMm:2800, wallThicknessMm:100 };
-
-/* ========== Placement Mode ========== */
+/* placement mode */
 let placementMode = null; // { kind:'device'|'zone'|'wall', key, label }
 function setPlacementMode(mode){
   placementMode = mode;
@@ -305,9 +294,12 @@ function setPlacementMode(mode){
   }
 }
 function cancelPlacement(){ setPlacementMode(null); toast('已取消放置模式'); }
+
+/* hotkeys */
 window.addEventListener('keydown',(e)=>{
   const tag=document.activeElement?.tagName?.toLowerCase();
   const typing=tag==='input'||tag==='textarea';
+
   if(e.key==='Escape'){
     hideInfoCard();
     if(placementMode){ cancelPlacement(); return; }
@@ -322,31 +314,42 @@ window.addEventListener('keydown',(e)=>{
   }
 });
 
-/* ========== Catalog Data ========== */
+/* catalogs */
 const DEVICE_CATALOG=[
-  { group:'instruments', key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, accent:'#38bdf8', icon:'settings' },
-  { group:'instruments', key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, accent:'#a78bfa', icon:'thermometer' },
-  { group:'instruments', key:'fridge', name:'冰箱', wMm:700, dMm:700, hMm:1800, accent:'#22c55e', icon:'snowflake' },
-  { group:'instruments', key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, accent:'#22c55e', icon:'snowflake' },
-
-  { group:'furniture', key:'bench', name:'實驗桌', wMm:1200, dMm:600, hMm:800, accent:'#60a5fa', icon:'table' },
-  { group:'furniture', key:'hood', name:'排煙櫃', wMm:1000, dMm:800, hMm:2000, accent:'#60a5fa', icon:'wind' },
-  { group:'furniture', key:'sink', name:'洗滌槽', wMm:900, dMm:600, hMm:900, accent:'#60a5fa', icon:'droplets' },
+  { group:'instruments', key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, accent:'#38bdf8' },
+  { group:'instruments', key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, accent:'#a78bfa' },
+  { group:'instruments', key:'fridge', name:'冰箱', wMm:700, dMm:700, hMm:1800, accent:'#22c55e' },
+  { group:'instruments', key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, accent:'#22c55e' },
+  { group:'furniture', key:'bench', name:'實驗桌', wMm:1200, dMm:600, hMm:800, accent:'#60a5fa' },
+  { group:'furniture', key:'hood', name:'排煙櫃', wMm:1000, dMm:800, hMm:2000, accent:'#60a5fa' },
+  { group:'furniture', key:'sink', name:'洗滌槽', wMm:900, dMm:600, hMm:900, accent:'#60a5fa' },
 ];
 const DEVICE_BY_KEY=new Map(DEVICE_CATALOG.map(d=>[d.key,d]));
 
-/* Wall Catalog (reasonable defaults) */
+const ZONE_CATALOG = [
+  { key:'zone_sample_reception', label:'樣品收發區', sub:'Sample Reception', wMm:2600, dMm:1400, color:'#38bdf8' },
+  { key:'zone_preprocessing', label:'前處理區', sub:'Pre-processing', wMm:2800, dMm:1600, color:'#f59e0b' },
+  { key:'zone_analysis', label:'分析區', sub:'Analysis', wMm:3000, dMm:2000, color:'#22c55e' },
+  { key:'zone_data_mgmt', label:'資料管理區', sub:'Data Management', wMm:2200, dMm:1400, color:'#a78bfa' },
+  { key:'zone_safety_waste', label:'安全/廢棄物區', sub:'Safety / Waste', wMm:2400, dMm:1600, color:'#ef4444' },
+];
+const ZONE_BY_KEY = new Map(ZONE_CATALOG.map(z=>[z.key,z]));
+
 const WALL_CATALOG = [
-  { key:'wall_h_full', label:'水平隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'h', icon:'🧱', sub:'2000×120mm · 120mm厚' },
-  { key:'wall_v_full', label:'垂直隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'v', icon:'🧱', sub:'120×2000mm · 120mm厚' },
-  { key:'wall_h_panel', label:'水平隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'h', icon:'🧱', sub:'1600×60mm · 60mm厚' },
-  { key:'wall_v_panel', label:'垂直隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'v', icon:'🧱', sub:'60×1600mm · 60mm厚' },
-  { key:'wall_h_half', label:'水平半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'h', icon:'🧱', sub:'1200×100mm · 100mm厚' },
-  { key:'wall_v_half', label:'垂直半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'v', icon:'🧱', sub:'100×1200mm · 100mm厚' },
+  { key:'wall_h_full', label:'水平隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'h', sub:'2000×120mm · 120mm厚' },
+  { key:'wall_v_full', label:'垂直隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'v', sub:'120×2000mm · 120mm厚' },
+  { key:'wall_h_panel', label:'水平隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'h', sub:'1600×60mm · 60mm厚' },
+  { key:'wall_v_panel', label:'垂直隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'v', sub:'60×1600mm · 60mm厚' },
+  { key:'wall_h_half', label:'水平半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'h', sub:'1200×100mm · 100mm厚' },
+  { key:'wall_v_half', label:'垂直半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'v', sub:'100×1200mm · 100mm厚' },
 ];
 const WALL_BY_KEY = new Map(WALL_CATALOG.map(w=>[w.key,w]));
 
-/* ========== Sidebar Rendering ========== */
+/* sidebar rendering */
+function iconForDevice(key){
+  const map = { centrifuge:'⚙️', incubator:'🌡️', fridge:'❄️', ultra_low_freezer:'🧊', bench:'🧰', hood:'🌬️', sink:'💧' };
+  return map[key] || '⬚';
+}
 function renderDevices(){
   const instruments=document.getElementById('grp-instruments');
   const furniture=document.getElementById('grp-furniture');
@@ -355,12 +358,8 @@ function renderDevices(){
   DEVICE_CATALOG.forEach(d=>{
     const el=document.createElement('div');
     el.className='lib-item';
-    el.dataset.action='place-device';
-    el.dataset.key=d.key;
-    el.dataset.name=d.name;
-    el.dataset.sub=`${d.wMm}×${d.dMm}mm`;
     el.innerHTML=`
-      <div class="lib-icon">${iconForDevice(d)}</div>
+      <div class="lib-icon">${iconForDevice(d.key)}</div>
       <div>
         <div class="lib-name">${escapeHtml(d.name)}</div>
         <div class="lib-sub">${d.wMm}×${d.dMm}mm</div>
@@ -370,18 +369,24 @@ function renderDevices(){
     (d.group==='instruments'?instruments:furniture).appendChild(el);
   });
 }
-function iconForDevice(d){
-  // simple unicode fallback; keeping it stable in sidebar
-  const map = {
-    centrifuge:'⚙️',
-    incubator:'🌡️',
-    fridge:'❄️',
-    ultra_low_freezer:'🧊',
-    bench:'🧱',
-    hood:'🌬️',
-    sink:'💧'
-  };
-  return map[d.key] || '⬚';
+function renderZones(){
+  const root=document.getElementById('zone-items');
+  root.innerHTML='';
+  ZONE_CATALOG.forEach(z=>{
+    const el=document.createElement('div');
+    el.className='lib-item';
+    el.innerHTML=`
+      <div class="lib-icon" style="background:rgba(148,163,184,.08);">
+        <div class="dot" style="background:${z.color}"></div>
+      </div>
+      <div>
+        <div class="lib-name">${escapeHtml(z.label)}</div>
+        <div class="lib-sub">${escapeHtml(z.sub)}</div>
+      </div>
+    `;
+    el.onclick = ()=> setPlacementMode({ kind:'zone', key:z.key, label:z.label });
+    root.appendChild(el);
+  });
 }
 function renderWalls(){
   const root=document.getElementById('wall-items');
@@ -390,7 +395,7 @@ function renderWalls(){
     const el=document.createElement('div');
     el.className='lib-item';
     el.innerHTML=`
-      <div class="lib-icon">${w.icon}</div>
+      <div class="lib-icon">🧱</div>
       <div>
         <div class="lib-name">${escapeHtml(w.label)}</div>
         <div class="lib-sub">${escapeHtml(w.sub)}</div>
@@ -411,8 +416,6 @@ function setupTabs(){
       document.getElementById('tab-walls').style.display = (name==='walls') ? 'block':'none';
     });
   });
-
-  // collapse groups
   document.querySelectorAll('[data-collapse]').forEach(t=>{
     t.addEventListener('click', ()=>{
       const id=t.dataset.collapse;
@@ -420,20 +423,15 @@ function setupTabs(){
       el.style.display = (el.style.display==='none') ? 'block' : 'none';
     });
   });
-
-  // zone placement item
-  document.querySelector('[data-action="place-zone"]').addEventListener('click', ()=>{
-    setPlacementMode({ kind:'zone', key:'zone', label:'規劃區域' });
-  });
 }
 
-/* ========== Konva 2D ========== */
+/* Konva stage */
 const stage=new Konva.Stage({ container:'container', width:window.innerWidth-640, height:window.innerHeight });
 const gridLayer=new Konva.Layer();
 const layer=new Konva.Layer();
 stage.add(gridLayer); stage.add(layer);
 
-// warning overlay
+// warnings overlay
 let warningLayer=null;
 let warningLinesGroup=null;
 function initWarningLayer(){
@@ -456,7 +454,7 @@ let selectedNode=null;
 let gridVisible=true;
 let snapEnabled=true;
 
-/* Grid */
+/* grid */
 function drawGrid(){
   gridLayer.destroyChildren();
   if(!gridVisible){ gridLayer.draw(); return; }
@@ -468,26 +466,7 @@ function drawGrid(){
 function toggleGrid(){ gridVisible=!gridVisible; drawGrid(); if(warningLayer) warningLayer.draw(); scheduleAutosave(); }
 function toggleSnap(){ snapEnabled=!snapEnabled; scheduleAutosave(); }
 
-/* Room boundary 2D (fixed) */
-let roomRect2D=null;
-function drawRoomBoundary2D(){
-  if(roomRect2D) roomRect2D.destroy();
-  const wPx=mmToPx(ROOM.widthMm), dPx=mmToPx(ROOM.depthMm);
-  roomRect2D=new Konva.Rect({
-    x:snapPx((stage.width()-wPx)/2),
-    y:snapPx((stage.height()-dPx)/2),
-    width:wPx, height:dPx,
-    stroke:'rgba(15,23,42,0.45)', strokeWidth:2,
-    fill:'rgba(15,23,42,0.03)',
-    listening:false,
-    name:'room-boundary'
-  });
-  gridLayer.add(roomRect2D);
-  gridLayer.draw();
-}
-function getRoomRectPx(){ if(!roomRect2D) drawRoomBoundary2D(); return roomRect2D.getClientRect(); }
-
-/* Selection rect */
+/* selection rect */
 let selecting=false;
 let selectionRect=new Konva.Rect({
   x:0,y:0,width:0,height:0,
@@ -500,15 +479,9 @@ let selectionRect=new Konva.Rect({
 layer.add(selectionRect);
 let startPos=null;
 
-/* ========== Nodes creation ========== */
+/* nodes */
 const SAFETY_CLEARANCE_MM_DEFAULT=100;
-
-// used for restoring stroke after conflict cleared
-const DEFAULT_STROKE_BY_KIND = {
-  device: '#1e293b',
-  zone: '#3b82f6',
-  wall: '#fb923c'
-};
+const DEFAULT_STROKE_BY_KIND = { device:'#1e293b', zone:'#3b82f6', wall:'#fb923c' };
 
 function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
   const group=new Konva.Group({
@@ -520,6 +493,7 @@ function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
       deviceKey: key,
       clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT,
       accent: extra.accent || '#60a5fa',
+      zoneColor: extra.zoneColor || null,
       wallThicknessMm: extra.wallThicknessMm || 0,
       wallHeightMm: extra.wallHeightMm || 0
     }, extra)
@@ -529,19 +503,12 @@ function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
     width:wPx,
     height:dPx,
     fill, stroke,
-    strokeWidth: 1,
+    strokeWidth: (kind==='wall'?2:1),
     name:'main-rect',
     dash: kind==='zone' ? [10,5] : []
   });
 
-  const title=new Konva.Text({
-    text:name,
-    fontSize:13,
-    fill:stroke,
-    padding:8,
-    name:'title-text'
-  });
-
+  const title=new Konva.Text({ text:name, fontSize:13, fill:stroke, padding:8, name:'title-text' });
   const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
 
   group.add(rect,title,dim);
@@ -549,7 +516,6 @@ function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
 
   group.on('dragmove',()=>{
     if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
-    constrainToRoom(group);
     if(kind==='device') maybeSnapDeviceToWalls(group);
     updateUI(group);
     scheduleAutosave();
@@ -559,7 +525,6 @@ function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
   group.on('transform',()=>{ updateUI(group); scheduleAutosave(); scheduleCollisionCheck(); });
   group.on('transformend',()=>{
     if(snapEnabled) normalizeGroupToGrid(group);
-    constrainToRoom(group);
     if(kind==='device') maybeSnapDeviceToWalls(group);
     scheduleAutosave();
     scheduleCollisionCheck();
@@ -588,73 +553,40 @@ function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
 function addDeviceByKey(key, x, y){
   const d = DEVICE_BY_KEY.get(key);
   if(!d) return;
-  const node = createNode(
-    'device',
-    d.name,
-    mmToPx(d.wMm),
-    mmToPx(d.dMm),
-    mmToPx(d.hMm),
-    'rgba(148,163,184,0.10)',
-    DEFAULT_STROKE_BY_KIND.device,
-    d.key,
-    { accent: d.accent }
-  );
+  const node = createNode('device', d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm),
+    'rgba(148,163,184,0.10)', DEFAULT_STROKE_BY_KIND.device, d.key, { accent: d.accent });
   node.position({ x, y });
   if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
-  constrainToRoom(node);
   updateUI(node);
   layer.draw();
 }
-
-function addZoneAt(x, y){
-  const node = createNode(
-    'zone',
-    '規劃區域',
-    mmToPx(3000),
-    mmToPx(2000),
-    0,
-    'rgba(59,130,246,0.10)',
-    DEFAULT_STROKE_BY_KIND.zone,
-    'zone',
-    {}
-  );
+function addZoneByKey(key, x, y){
+  const z = ZONE_BY_KEY.get(key);
+  if(!z) return;
+  const fill = hexToRgba(z.color, 0.10);
+  const node = createNode('zone', z.label, mmToPx(z.wMm), mmToPx(z.dMm), 0, fill, z.color, z.key, { zoneColor: z.color });
   node.position({ x, y });
   if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
-  constrainToRoom(node);
   updateUI(node);
   layer.draw();
 }
-
 function addWallByKey(key, x, y){
   const w = WALL_BY_KEY.get(key);
   if(!w) return;
-
   const lenPx = mmToPx(w.lengthMm);
   const thPx = mmToPx(w.thicknessMm);
-
   const widthPx = (w.orientation === 'h') ? lenPx : thPx;
   const heightPx = (w.orientation === 'h') ? thPx : lenPx;
 
-  const node = createNode(
-    'wall',
-    w.label,
-    widthPx,
-    heightPx,
-    0,
-    'rgba(251, 146, 60, 0.15)',
-    DEFAULT_STROKE_BY_KIND.wall,
-    w.key,
-    { wallThicknessMm: w.thicknessMm, wallHeightMm: w.heightMm, wallOrientation: w.orientation }
-  );
-
+  const node = createNode('wall', w.label, widthPx, heightPx, 0,
+    'rgba(251, 146, 60, 0.15)', DEFAULT_STROKE_BY_KIND.wall, w.key,
+    { wallThicknessMm: w.thicknessMm, wallHeightMm: w.heightMm, wallOrientation: w.orientation });
   node.position({ x, y });
   if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
-  constrainToRoom(node);
   updateUI(node);
   layer.draw();
 }
 
-/* normalize sizes after transformer */
 function normalizeGroupToGrid(group){
   group.x(snapPx(group.x()));
   group.y(snapPx(group.y()));
@@ -666,28 +598,15 @@ function normalizeGroupToGrid(group){
   group.scaleX(targetW/rect.width());
   group.scaleY(targetH/rect.height());
 }
-function constrainToRoom(group){
-  const rr=getRoomRectPx();
-  const r=group.findOne('.main-rect');
-  const w=r.width()*group.scaleX();
-  const h=r.height()*group.scaleY();
-  group.position({
-    x: clamp(group.x(), rr.x, rr.x+rr.width-w),
-    y: clamp(group.y(), rr.y, rr.y+rr.height-h)
-  });
-}
 function updateUI(group){
   const rect=group.findOne('.main-rect');
   const dim=group.findOne('.dim-label');
-
   const wPx = rect.width()*group.scaleX();
   const dPx = rect.height()*group.scaleY();
-
   dim.text(`${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}`);
   dim.x(rect.width()-dim.width()-5);
   dim.y(rect.height()-15);
 
-  // conflict rendering
   if(group.name()==='device'){
     if(conflictIds.has(group._id)){
       const hard = collisionPairs.some(p => p.type==='overlap' && (p.aId===group._id || p.bId===group._id));
@@ -700,12 +619,22 @@ function updateUI(group){
   }else if(group.name()==='wall'){
     rect.stroke(DEFAULT_STROKE_BY_KIND.wall);
     rect.strokeWidth(2);
+  }else if(group.name()==='zone'){
+    // keep zone stroke as its own color
+    rect.strokeWidth(2);
   }
 
   if(selectedNodes.includes(group)) renderInspector();
 }
 
-/* ========== Selection ========== */
+function hexToRgba(hex, a){
+  const h=hex.replace('#','');
+  const bigint=parseInt(h.length===3 ? h.split('').map(c=>c+c).join('') : h, 16);
+  const r=(bigint>>16)&255, g=(bigint>>8)&255, b=bigint&255;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* selection */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
@@ -728,33 +657,27 @@ function toggleSelectNode(node){
   applyTransformer(); renderInspector();
 }
 
-/* ========== Stage interactions ========== */
+/* stage click for placement + clear */
 stage.on('click tap', (e)=>{
-  // placement mode: click to place at pointer
   if(placementMode && e.target===stage){
-    const p = stage.getPointerPosition();
-    if(!p) return;
+    const p = stage.getPointerPosition(); if(!p) return;
     const x = p.x, y = p.y;
-
     if(placementMode.kind === 'device') addDeviceByKey(placementMode.key, x, y);
-    if(placementMode.kind === 'zone') addZoneAt(x, y);
+    if(placementMode.kind === 'zone') addZoneByKey(placementMode.key, x, y);
     if(placementMode.kind === 'wall') addWallByKey(placementMode.key, x, y);
-
-    // exit after place
     setPlacementMode(null);
     return;
   }
-
-  // normal clear selection
   if(e.target===stage){
     clearSelection();
     if(is3DVisible()) update3D();
   }
 });
 
+/* marquee */
 stage.on('mousedown touchstart',(e)=>{
   if(is3DVisible()) return;
-  if(placementMode) return; // don't marquee while in placement
+  if(placementMode) return;
   if(e.target!==stage) return;
   selecting=true;
   startPos=stage.getPointerPosition();
@@ -778,6 +701,7 @@ stage.on('mouseup touchend',(e)=>{
   selecting=false;
   selectionRect.visible(false);
   layer.draw();
+
   const box=selectionRect.getClientRect();
   const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall'));
   const additive=e.evt && e.evt.shiftKey;
@@ -789,57 +713,41 @@ stage.on('mouseup touchend',(e)=>{
   if(is3DVisible()) update3D();
 });
 
-/* ========== Wall snapping (device->wall) ========== */
+/* device->wall snap (simple AABB) */
 function maybeSnapDeviceToWalls(deviceGroup){
-  // Axis-aligned snapping based on 2D client rects (simple & stable)
   const SNAP_MM = 50;
-  const snapPxTol = mmToPx(SNAP_MM);
-
+  const tol = mmToPx(SNAP_MM);
   const devRect = deviceGroup.getClientRect();
   const walls = layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='wall');
   if(walls.length===0) return;
 
-  // choose nearest snap
-  let best = null;
-
+  let best=null;
   walls.forEach(w=>{
-    const wr = w.getClientRect();
+    const wr=w.getClientRect();
 
-    // snap dev left to wall right (touch)
-    const dx1 = Math.abs(devRect.x - (wr.x + wr.width));
-    if(dx1 < snapPxTol) best = chooseBest(best, { type:'x', value: (wr.x + wr.width) - devRect.x });
+    const dx1=Math.abs(devRect.x - (wr.x+wr.width));
+    if(dx1<tol) best=choose(best,{type:'x', value:(wr.x+wr.width)-devRect.x});
 
-    // snap dev right to wall left
-    const dx2 = Math.abs((devRect.x+devRect.width) - wr.x);
-    if(dx2 < snapPxTol) best = chooseBest(best, { type:'x', value: wr.x - (devRect.x+devRect.width) });
+    const dx2=Math.abs((devRect.x+devRect.width) - wr.x);
+    if(dx2<tol) best=choose(best,{type:'x', value:wr.x - (devRect.x+devRect.width)});
 
-    // snap dev top to wall bottom
-    const dy1 = Math.abs(devRect.y - (wr.y + wr.height));
-    if(dy1 < snapPxTol) best = chooseBest(best, { type:'y', value: (wr.y + wr.height) - devRect.y });
+    const dy1=Math.abs(devRect.y - (wr.y+wr.height));
+    if(dy1<tol) best=choose(best,{type:'y', value:(wr.y+wr.height)-devRect.y});
 
-    // snap dev bottom to wall top
-    const dy2 = Math.abs((devRect.y+devRect.height) - wr.y);
-    if(dy2 < snapPxTol) best = chooseBest(best, { type:'y', value: wr.y - (devRect.y+devRect.height) });
+    const dy2=Math.abs((devRect.y+devRect.height) - wr.y);
+    if(dy2<tol) best=choose(best,{type:'y', value:wr.y - (devRect.y+devRect.height)});
   });
 
   if(!best) return;
+  if(best.type==='x') deviceGroup.x(deviceGroup.x()+best.value);
+  if(best.type==='y') deviceGroup.y(deviceGroup.y()+best.value);
+  if(snapEnabled) deviceGroup.position({ x:snapPx(deviceGroup.x()), y:snapPx(deviceGroup.y()) });
 
-  // Apply delta to group position
-  if(best.type==='x') deviceGroup.x(deviceGroup.x() + best.value);
-  if(best.type==='y') deviceGroup.y(deviceGroup.y() + best.value);
-
-  if(snapEnabled){
-    deviceGroup.position({ x:snapPx(deviceGroup.x()), y:snapPx(deviceGroup.y()) });
-  }
-  constrainToRoom(deviceGroup);
-
-  function chooseBest(curr, cand){
-    if(!curr) return cand;
-    return Math.abs(cand.value) < Math.abs(curr.value) ? cand : curr;
-  }
+  function choose(curr,cand){ if(!curr) return cand; return Math.abs(cand.value)<Math.abs(curr.value)?cand:curr; }
 }
 
-/* ========== 7A v2 collision/clearance + distance lines (devices only) ========== */
+/* 7A v2 collisions (devices only) */
+const SAFETY_CLEARANCE_MM_DEFAULT=100;
 let collisionPairs=[]; // {aId,bId,type,gapMm,needMm,seg}
 let conflictIds=new Set();
 let collisionTimer=null;
@@ -859,7 +767,6 @@ function getClosestSegmentBetweenRects(a,b){
     const rx1=r.x, rx2=r.x+r.width, ry1=r.y, ry2=r.y+r.height;
     return { x: clamp(px, rx1, rx2), y: clamp(py, ry1, ry2) };
   }
-
   const acx=(ax1+ax2)/2, acy=(ay1+ay2)/2;
   const bcx=(bx1+bx2)/2, bcy=(by1+by2)/2;
 
@@ -869,7 +776,6 @@ function getClosestSegmentBetweenRects(a,b){
     bx: clampPointToRect(acx, acy, b).x,
     by: clampPointToRect(acx, acy, b).y
   };
-
   function dist2(s){ const dx=s.ax-s.bx, dy=s.ay-s.by; return dx*dx+dy*dy; }
   let bestD2=dist2(best);
 
@@ -882,7 +788,6 @@ function getClosestSegmentBetweenRects(a,b){
     const s = { ax: ax1, ay: y, bx: bx2, by: clamp(y, by1, by2) };
     const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
   }
-
   if(ay2 < by1){
     const x = clamp(acx, bx1, bx2);
     const s = { ax: clamp(x, ax1, ax2), ay: ay2, bx: x, by: by1 };
@@ -892,7 +797,6 @@ function getClosestSegmentBetweenRects(a,b){
     const s = { ax: x, ay: ay1, bx: clamp(x, bx1, bx2), by: by2 };
     const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
   }
-
   return best;
 }
 
@@ -945,7 +849,7 @@ function recomputeCollisions(){
   if(is3DVisible()) sync3DConflictHighlight();
 }
 
-/* ========== Inspector ========== */
+/* inspector */
 function renderInspector(){
   const c=document.getElementById('inspector-content');
 
@@ -958,7 +862,6 @@ function renderInspector(){
     `;
     return;
   }
-
   if(selectedNodes.length>1){
     c.innerHTML=`
       <div class="chip">已選取：${selectedNodes.length} 個</div>
@@ -972,19 +875,18 @@ function renderInspector(){
   const wPx=r.width()*n.scaleX();
   const dPx=r.height()*n.scaleY();
   const kind=n.name();
+  const key=n.attrs.customData?.deviceKey || kind;
 
   if(kind==='device'){
     const hPx=n.attrs.customData?.height3dPx||0;
-    const key=n.attrs.customData?.deviceKey||'device';
     const clearance=n.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
-
     c.innerHTML=`
       <div class="chip">設備：${escapeHtml(key)}</div>
       <div style="margin-top:10px; color:#94a3b8; font-size:12px; line-height:1.4;">
         尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
         高度：<b>${fmtCm(pxToMm(hPx))}</b>
       </div>
-      <div class="prop-group" style="margin-top:12px;">
+      <div class="prop-group">
         <label class="prop-label">安全距離 (mm)</label>
         <input type="number" value="${clearance}" oninput="updateClearance(this.value)">
       </div>
@@ -995,7 +897,7 @@ function renderInspector(){
 
   if(kind==='zone'){
     c.innerHTML=`
-      <div class="chip">區域</div>
+      <div class="chip">區域：${escapeHtml(key)}</div>
       <div style="margin-top:10px; color:#94a3b8; font-size:12px;">
         尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b>
       </div>
@@ -1005,11 +907,10 @@ function renderInspector(){
   }
 
   if(kind==='wall'){
-    const wallKey=n.attrs.customData?.deviceKey||'wall';
     const th=n.attrs.customData?.wallThicknessMm||0;
     const wh=n.attrs.customData?.wallHeightMm||0;
     c.innerHTML=`
-      <div class="chip">牆壁：${escapeHtml(wallKey)}</div>
+      <div class="chip">牆壁：${escapeHtml(key)}</div>
       <div style="margin-top:10px; color:#94a3b8; font-size:12px; line-height:1.4;">
         平面：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
         厚度：<b>${th}mm</b> / 牆高：<b>${wh}mm</b>
@@ -1028,7 +929,7 @@ function updateClearance(v){
   scheduleCollisionCheck();
 }
 
-/* ========== Delete / Export ========== */
+/* delete/export */
 function deleteSelected(){
   if(selectedNodes.length===0) return;
   selectedNodes.forEach(n=>n.destroy());
@@ -1038,7 +939,6 @@ function deleteSelected(){
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
-
 function exportImg(format){
   tr.nodes([]);
   layer.draw();
@@ -1054,7 +954,7 @@ function exportImg(format){
   }
 }
 
-/* ========== Save/Load JSON ========== */
+/* save/load */
 const STORAGE_KEY='labcad_design_v1';
 let autosaveTimer=null;
 
@@ -1088,6 +988,7 @@ function serializeNode(group){
     hMm: pxToMm(hPx),
     clearanceMm: group.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT,
     accent: group.attrs.customData?.accent ?? '#60a5fa',
+    zoneColor: group.attrs.customData?.zoneColor ?? null,
     wallThicknessMm: group.attrs.customData?.wallThicknessMm ?? 0,
     wallHeightMm: group.attrs.customData?.wallHeightMm ?? 0,
     wallOrientation: group.attrs.customData?.wallOrientation ?? ''
@@ -1096,10 +997,9 @@ function serializeNode(group){
 function getDesignJSON(){
   const nodes=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall')).map(serializeNode);
   return {
-    version: 90,
+    version: 100,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
-    room: { ...ROOM },
     ui: { gridVisible, snapEnabled },
     nodes
   };
@@ -1127,7 +1027,6 @@ document.getElementById('import-json-input').addEventListener('change',(e)=>{
   };
   reader.readAsText(file);
 });
-
 function resetDesign(clearLS=false){
   layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall')).forEach(g=>g.destroy());
   selectionRect.visible(false);
@@ -1139,15 +1038,12 @@ function resetDesign(clearLS=false){
   if(warningLayer) warningLayer.draw();
   if(is3DVisible()) update3D();
 }
-
 function loadDesignFromObject(design){
   resetDesign(false);
-
   if(design?.ui){
     gridVisible = design.ui.gridVisible ?? gridVisible;
     snapEnabled = design.ui.snapEnabled ?? snapEnabled;
   }
-
   (design?.nodes||[]).forEach(n=>{
     const type = (n.type==='wall') ? 'wall' : (n.type==='zone' ? 'zone' : 'device');
     const stroke = n.stroke || DEFAULT_STROKE_BY_KIND[type] || '#1e293b';
@@ -1164,6 +1060,7 @@ function loadDesignFromObject(design){
         deviceKey: n.key || type,
         clearanceMm: Number(n.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT),
         accent: n.accent ?? '#60a5fa',
+        zoneColor: n.zoneColor ?? null,
         wallThicknessMm: Number(n.wallThicknessMm||0),
         wallHeightMm: Number(n.wallHeightMm||0),
         wallOrientation: n.wallOrientation || ''
@@ -1185,7 +1082,6 @@ function loadDesignFromObject(design){
 
     group.on('dragmove',()=>{
       if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
-      constrainToRoom(group);
       if(type==='device') maybeSnapDeviceToWalls(group);
       updateUI(group);
       scheduleAutosave();
@@ -1195,7 +1091,6 @@ function loadDesignFromObject(design){
     group.on('transform',()=>{ updateUI(group); scheduleAutosave(); scheduleCollisionCheck(); });
     group.on('transformend',()=>{
       if(snapEnabled) normalizeGroupToGrid(group);
-      constrainToRoom(group);
       if(type==='device') maybeSnapDeviceToWalls(group);
       scheduleAutosave();
       scheduleCollisionCheck();
@@ -1211,12 +1106,11 @@ function loadDesignFromObject(design){
     if(type==='zone') group.moveToBottom();
   });
 
-  drawGrid(); drawRoomBoundary2D(); layer.draw();
+  drawGrid(); layer.draw();
   scheduleAutosave();
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
-
 function tryLoadFromLocalStorage(){
   const raw=localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
@@ -1224,7 +1118,7 @@ function tryLoadFromLocalStorage(){
   catch(err){ console.warn(err); }
 }
 
-/* ========== 3D rounded geometry (approx) ========== */
+/* ========== 3D geometry & prefabs (kept) ========== */
 function createRoundedRectShape(w, h, r){
   const x=-w/2, y=-h/2;
   const shape=new THREE.Shape();
@@ -1247,8 +1141,6 @@ function makeRoundedBoxGeo(w,h,d,radius,smoothSteps=5){
   geo.computeVertexNormals();
   return geo;
 }
-
-/* materials */
 const MAT = {
   body: new THREE.MeshStandardMaterial({ color:0xf1f5f9, roughness:0.85, metalness:0.02 }),
   body2: new THREE.MeshStandardMaterial({ color:0xe5e7eb, roughness:0.85, metalness:0.02 }),
@@ -1289,136 +1181,88 @@ function addPanel(root,x,y,z,w,h){
   mesh.position.set(x,y,z);
   root.add(mesh);
 }
-
-/* prefabs */
 function buildBench3D(w,d,h){
   const root=new THREE.Group();
   const top=new THREE.Mesh(makeRoundedBoxGeo(w,44,d,16,5), MAT.body);
-  top.position.set(0,h-22,0);
-  root.add(top);
-
+  top.position.set(0,h-22,0); root.add(top);
   const legH=h-70;
   const legGeo=makeRoundedBoxGeo(22,legH,22,6,3);
   [[-w/2+22, legH/2, -d/2+22],[w/2-22, legH/2, -d/2+22],[-w/2+22, legH/2, d/2-22],[w/2-22, legH/2, d/2-22]]
     .forEach(([x,y,z])=>{ const leg=new THREE.Mesh(legGeo, MAT.base); leg.position.set(x,y,z); root.add(leg); });
-
   return { root, pickHeight:h };
 }
 function buildFridgeLike3D(w,d,h, accentHex){
   const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
-
   const plinth=new THREE.Mesh(makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3), MAT.base);
-  plinth.position.set(0,20,0);
-  root.add(plinth);
-
+  plinth.position.set(0,20,0); root.add(plinth);
   const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
-  body.position.set(0,h/2+40,0);
-  root.add(body);
-
+  body.position.set(0,h/2+40,0); root.add(body);
   addDoorPanel(root,0,h/2+40,d/2+4,w*0.9,h*0.88,radius);
   addHandle(root,w/2-36,h/2+40,d/2+16,h*0.45);
   addPanel(root,0,h+40-120,d/2+14,w*0.5,74);
   addAccentStripe(root,w*0.22,h+40-170,d/2+16,w*0.35,20,accentHex);
-
   return { root, pickHeight:h+40 };
 }
 function buildIncubator3D(w,d,h,accentHex){
   const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
-
   const base=new THREE.Mesh(makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3), MAT.base);
-  base.position.set(0,20,0);
-  root.add(base);
-
+  base.position.set(0,20,0); root.add(base);
   const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
-  body.position.set(0,h/2+40,0);
-  root.add(body);
-
+  body.position.set(0,h/2+40,0); root.add(body);
   const glass=new THREE.Mesh(makeRoundedBoxGeo(w*0.82,h*0.74,8,Math.min(18,radius),5), MAT.glass);
-  glass.position.set(0,h/2+40,d/2+10);
-  root.add(glass);
-
+  glass.position.set(0,h/2+40,d/2+10); root.add(glass);
   addPanel(root,0,h+40-120,d/2+14,w*0.5,74);
   addAccentStripe(root,w*0.22,h+40-170,d/2+16,w*0.35,20,accentHex);
   addHandle(root,w/2-36,h/2+40,d/2+16,h*0.45);
-
   return { root, pickHeight:h+40 };
 }
 function buildCentrifuge3D(w,d,h,accentHex){
   const root=new THREE.Group();
   const baseH=h*0.55;
-
   const base=new THREE.Mesh(makeRoundedBoxGeo(w,baseH,d,Math.min(18,Math.min(w,d)*0.08),5), MAT.base);
-  base.position.set(0,baseH/2,0);
-  root.add(base);
-
+  base.position.set(0,baseH/2,0); root.add(base);
   const lid=new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.38,Math.min(w,d)*0.38,h*0.28,28), MAT.body2);
-  lid.position.set(0,baseH+h*0.14,0);
-  root.add(lid);
-
+  lid.position.set(0,baseH+h*0.14,0); root.add(lid);
   addPanel(root,w*0.18,baseH*0.65,d/2+14,w*0.42,h*0.22);
   addAccentStripe(root,-w*0.15,baseH*0.55,d/2+14,w*0.28,18,accentHex);
-
   return { root, pickHeight:h };
 }
 function buildSink3D(w,d,h,accentHex){
   const root=new THREE.Group();
-
   const cab=new THREE.Mesh(makeRoundedBoxGeo(w*0.92,h-60,d*0.92,16,5), MAT.body2);
-  cab.position.set(0,(h-60)/2,0);
-  root.add(cab);
-
+  cab.position.set(0,(h-60)/2,0); root.add(cab);
   const top=new THREE.Mesh(makeRoundedBoxGeo(w,44,d,16,6), MAT.body);
-  top.position.set(0,h-22,0);
-  root.add(top);
-
+  top.position.set(0,h-22,0); root.add(top);
   const basin=new THREE.Mesh(makeRoundedBoxGeo(w*0.55,26,d*0.45,14,5), MAT.base2);
-  basin.position.set(-w*0.08,h-30,0);
-  root.add(basin);
-
+  basin.position.set(-w*0.08,h-30,0); root.add(basin);
   const post=new THREE.Mesh(new THREE.CylinderGeometry(10,10,120,14), MAT.metal);
-  post.position.set(w*0.2,h+30,0);
-  root.add(post);
-
+  post.position.set(w*0.2,h+30,0); root.add(post);
   const spout=new THREE.Mesh(new THREE.CylinderGeometry(8,8,120,14), MAT.metal);
   spout.rotation.z=Math.PI/2;
-  spout.position.set(w*0.2+55,h+70,0);
-  root.add(spout);
-
+  spout.position.set(w*0.2+55,h+70,0); root.add(spout);
   addHandle(root,w*0.35,(h-60)/2,d/2+14,(h-60)*0.35);
   addAccentStripe(root,-w*0.18,(h-60)/2,d/2+14,w*0.28,18,accentHex);
-
   return { root, pickHeight:h };
 }
 function buildHood3D(w,d,h,accentHex){
   const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
-
   const base=new THREE.Mesh(makeRoundedBoxGeo(w,46,d,14,5), MAT.base);
-  base.position.set(0,23,0);
-  root.add(base);
-
+  base.position.set(0,23,0); root.add(base);
   const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
-  body.position.set(0,h/2+46,0);
-  root.add(body);
-
+  body.position.set(0,h/2+46,0); root.add(body);
   const frame=new THREE.Mesh(makeRoundedBoxGeo(w*0.92,h*0.6,14,12,5), MAT.body2);
-  frame.position.set(0,h*0.58,d/2+6);
-  root.add(frame);
-
+  frame.position.set(0,h*0.58,d/2+6); root.add(frame);
   const glass=new THREE.Mesh(makeRoundedBoxGeo(w*0.86,h*0.52,10,12,5), MAT.glass);
-  glass.position.set(0,h*0.58,d/2+10);
-  root.add(glass);
-
+  glass.position.set(0,h*0.58,d/2+10); root.add(glass);
   addPanel(root,0,h+46-140,d/2+16,w*0.6,84);
   addAccentStripe(root,w*0.22,h+46-190,d/2+16,w*0.35,20,accentHex);
-
   return { root, pickHeight:h+46 };
 }
 function buildWall3D(wPx,dPx, wallHpx){
   const root=new THREE.Group();
-  // thickness appearance: make it a solid wall box
   const geo=new THREE.BoxGeometry(wPx, wallHpx, dPx);
   const mat=new THREE.MeshStandardMaterial({ color:0x334155, roughness:0.92, metalness:0.05 });
   const mesh=new THREE.Mesh(geo, mat);
@@ -1428,7 +1272,7 @@ function buildWall3D(wPx,dPx, wallHpx){
 }
 function buildPrefab3D(key, wPx, dPx, hPx, accentHex, kind, customData){
   if(kind==='wall'){
-    const wallHpx = mmToPx(customData.wallHeightMm || ROOM.wallHeightMm);
+    const wallHpx = mmToPx(customData.wallHeightMm || 2800);
     return buildWall3D(wPx, dPx, wallHpx);
   }
   switch(key){
@@ -1443,9 +1287,9 @@ function buildPrefab3D(key, wPx, dPx, hPx, accentHex, kind, customData){
   }
 }
 
-/* ========== 3D Engine ========== */
+/* 3D engine: NO ROOM now */
 let sc, cam, rend, ctrl;
-let objectsGroup, roomGroup3D, groundMesh, dirLight;
+let objectsGroup, groundMesh, dirLight;
 const threeMap=new Map();
 const pickables=[];
 const raycaster=new THREE.Raycaster();
@@ -1476,8 +1320,8 @@ function init3DIfNeeded(){
   sc.background=new THREE.Color(0x0a0f1a);
 
   const {w,h}=get3DSize();
-  cam=new THREE.PerspectiveCamera(45,w/h,1,20000);
-  cam.position.set(1000,1000,1000);
+  cam=new THREE.PerspectiveCamera(45,w/h,1,30000);
+  cam.position.set(1200,1200,1200);
 
   rend=new THREE.WebGLRenderer({ antialias:true, alpha:false });
   rend.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
@@ -1500,14 +1344,14 @@ function init3DIfNeeded(){
   dirLight.shadow.mapSize.width=2048;
   dirLight.shadow.mapSize.height=2048;
   dirLight.shadow.camera.near=1;
-  dirLight.shadow.camera.far=12000;
-  dirLight.shadow.camera.left=-5000;
-  dirLight.shadow.camera.right=5000;
-  dirLight.shadow.camera.top=5000;
-  dirLight.shadow.camera.bottom=-5000;
+  dirLight.shadow.camera.far=20000;
+  dirLight.shadow.camera.left=-8000;
+  dirLight.shadow.camera.right=8000;
+  dirLight.shadow.camera.top=8000;
+  dirLight.shadow.camera.bottom=-8000;
   sc.add(dirLight);
 
-  const groundGeo=new THREE.PlaneGeometry(12000,12000);
+  const groundGeo=new THREE.PlaneGeometry(20000,20000);
   const groundMat=new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.95, metalness:0.0 });
   groundMesh=new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x=-Math.PI/2;
@@ -1515,10 +1359,7 @@ function init3DIfNeeded(){
   groundMesh.receiveShadow=true;
   sc.add(groundMesh);
 
-  sc.add(new THREE.GridHelper(8000,80,0x334155,0x1e293b));
-
-  roomGroup3D=new THREE.Group();
-  sc.add(roomGroup3D);
+  sc.add(new THREE.GridHelper(20000,200,0x334155,0x1e293b));
 
   objectsGroup=new THREE.Group();
   sc.add(objectsGroup);
@@ -1526,61 +1367,34 @@ function init3DIfNeeded(){
   rend.domElement.addEventListener('pointerdown', onPointerDown3D);
 }
 
-function buildRoom3D(){
-  while(roomGroup3D.children.length) roomGroup3D.remove(roomGroup3D.children[0]);
-
-  const w=mmToPx(ROOM.widthMm), d=mmToPx(ROOM.depthMm);
-  const wallH=mmToPx(ROOM.wallHeightMm), t=mmToPx(ROOM.wallThicknessMm);
-
-  const wallMat=new THREE.MeshStandardMaterial({ color:0x111827, roughness:0.9, metalness:0.0 });
-  const floorMat=new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.95, metalness:0.0 });
-
-  const floor=new THREE.Mesh(new THREE.PlaneGeometry(w,d), floorMat);
-  floor.rotation.x=-Math.PI/2;
-  floor.receiveShadow=true;
-  roomGroup3D.add(floor);
-
-  const wallGeo1=new THREE.BoxGeometry(w,wallH,t);
-  const wallGeo2=new THREE.BoxGeometry(t,wallH,d);
-
-  const wallN=new THREE.Mesh(wallGeo1, wallMat); wallN.position.set(0,wallH/2,-d/2);
-  const wallS=new THREE.Mesh(wallGeo1, wallMat); wallS.position.set(0,wallH/2,d/2);
-  const wallW=new THREE.Mesh(wallGeo2, wallMat); wallW.position.set(-w/2,wallH/2,0);
-  const wallE=new THREE.Mesh(wallGeo2, wallMat); wallE.position.set(w/2,wallH/2,0);
-  [wallN,wallS,wallW,wallE].forEach(wm=>{ wm.castShadow=true; wm.receiveShadow=true; roomGroup3D.add(wm); });
-}
-
 function update3D(){
   if(!sc) return;
-  buildRoom3D();
 
   while(objectsGroup.children.length) objectsGroup.remove(objectsGroup.children[0]);
   threeMap.clear();
   pickables.length=0;
 
-  const rr=getRoomRectPx();
-  const cx=rr.x+rr.width/2;
-  const cy=rr.y+rr.height/2;
+  // map 2D canvas coords to 3D with origin at canvas center
+  const cx = stage.width()/2;
+  const cy = stage.height()/2;
 
   const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall'));
-
   groups.forEach(n=>{
     const rect=n.findOne('.main-rect');
     const wPx=rect.width()*n.scaleX();
     const dPx=rect.height()*n.scaleY();
 
-    const kind = n.name();
+    const kind=n.name();
     const key=n.attrs.customData?.deviceKey || kind;
     const accent=n.attrs.customData?.accent || '#60a5fa';
-
-    // height for devices from catalog; walls use wallHeightMm; zone is flat
-    const hPx = (kind==='zone') ? 0 : (kind==='wall' ? mmToPx(n.attrs.customData?.wallHeightMm || ROOM.wallHeightMm) : (n.attrs.customData?.height3dPx || mmToPx(800)));
+    const hPx = (kind==='zone') ? 0 : (kind==='wall' ? mmToPx(n.attrs.customData?.wallHeightMm || 2800) : (n.attrs.customData?.height3dPx || mmToPx(800)));
 
     const x3d=(n.x()+wPx/2)-cx;
     const z3d=(n.y()+dPx/2)-cy;
 
     if(kind==='zone'){
-      const mat=new THREE.MeshStandardMaterial({ color:0x3b82f6, transparent:true, opacity:0.18, roughness:0.95, metalness:0.0, side:THREE.DoubleSide });
+      const zcol = n.attrs.customData?.zoneColor || '#3b82f6';
+      const mat=new THREE.MeshStandardMaterial({ color:new THREE.Color(zcol), transparent:true, opacity:0.18, roughness:0.95, metalness:0.0, side:THREE.DoubleSide });
       const mesh=new THREE.Mesh(new THREE.PlaneGeometry(wPx,dPx), mat);
       mesh.rotation.x=-Math.PI/2;
       mesh.position.set(x3d,1,z3d);
@@ -1622,22 +1436,23 @@ function update3D(){
     pickables.push(pickMesh);
   });
 
-  fitCameraToRoom();
+  fitCameraToScene();
   sync3DSelectionHighlight();
   sync3DConflictHighlight();
   updateDebug3D();
 }
 
-function fitCameraToRoom(){
-  const maxDim=Math.max(mmToPx(ROOM.widthMm), mmToPx(ROOM.depthMm));
+function fitCameraToScene(){
+  // keep it simple: fixed dist based on viewport
+  const maxDim = Math.max(stage.width(), stage.height());
   ctrl.target.set(0,0,0);
   const fov=cam.fov*(Math.PI/180);
   let dist=Math.abs(maxDim/2/Math.tan(fov/2));
-  dist*=1.35;
+  dist*=1.25;
   const dir=new THREE.Vector3(1,1,1).normalize();
   cam.position.copy(dir.multiplyScalar(dist));
   cam.near=Math.max(1, dist/100);
-  cam.far=Math.max(20000, dist*10);
+  cam.far=Math.max(40000, dist*10);
   cam.updateProjectionMatrix();
   ctrl.update();
 }
@@ -1654,13 +1469,9 @@ function sync3DSelectionHighlight(){
     obj.outline.visible = selected;
   });
 }
-
 function sync3DConflictHighlight(){
   threeMap.forEach((obj,id)=>{
-    if(obj.kind !== 'device') {
-      // wall/zone conflict highlight not implemented yet
-      return;
-    }
+    if(obj.kind !== 'device') return;
     const isConflict=conflictIds.has(id);
     if(!obj.outline) return;
     if(!isConflict){
@@ -1672,7 +1483,6 @@ function sync3DConflictHighlight(){
     obj.outline.visible = true;
   });
 }
-
 function animate3D(){
   if(is3DVisible()){
     requestAnimationFrame(animate3D);
@@ -1680,21 +1490,17 @@ function animate3D(){
     rend.render(sc, cam);
   }
 }
-
 function updateDebug3D(){
   const el=document.getElementById('debug3d');
   if(!el || !is3DVisible()) return;
   const {w,h}=get3DSize();
   el.textContent=`3D: ${w}x${h}\nObjects: ${threeMap.size}\nConflicts: ${collisionPairs.length}\n`;
 }
-
-/* 3D picking + info card */
 function onPointerDown3D(e){
   if(!is3DVisible() || !cam) return;
   const rect=rend.domElement.getBoundingClientRect();
   pointer.set(((e.clientX-rect.left)/rect.width)*2-1, -(((e.clientY-rect.top)/rect.height)*2-1));
   raycaster.setFromCamera(pointer, cam);
-
   const hits=raycaster.intersectObjects(pickables,false);
   if(hits.length===0){
     hideInfoCard();
@@ -1704,25 +1510,20 @@ function onPointerDown3D(e){
   const id=hits[0].object.userData?.konvaId;
   const node=layer.getChildren().find(n=>n instanceof Konva.Group && n._id===id);
   if(!node) return;
-
-  if(e.shiftKey) toggleSelectNode(node);
-  else selectSingleNode(node);
-
+  if(e.shiftKey) toggleSelectNode(node); else selectSingleNode(node);
   layer.draw();
   showInfoCardFor(node,{x:e.clientX,y:e.clientY});
 }
-
 function getNodeSizeMm(node){
   const r=node.findOne('.main-rect');
   const wPx=r.width()*node.scaleX();
   const dPx=r.height()*node.scaleY();
   const kind=node.name();
   const hPx = (kind==='wall')
-    ? mmToPx(node.attrs.customData?.wallHeightMm || ROOM.wallHeightMm)
+    ? mmToPx(node.attrs.customData?.wallHeightMm || 2800)
     : (node.attrs.customData?.height3dPx || 0);
   return { wMm:pxToMm(wPx), dMm:pxToMm(dPx), hMm:pxToMm(hPx) };
 }
-
 function showInfoCardFor(node,pt){
   const card=document.getElementById('info-card');
   const name=node.findOne('.title-text')?.text()||'';
@@ -1736,7 +1537,6 @@ function showInfoCardFor(node,pt){
     <div class="info-row"><div class="info-key">高度</div><div>${fmtCm(size.hMm)}</div></div>
   `;
   card.style.display='block';
-
   const vw=window.innerWidth,vh=window.innerHeight;
   const cw=320,ch=170;
   let left=pt.x+14,top=pt.y+14;
@@ -1747,7 +1547,7 @@ function showInfoCardFor(node,pt){
 }
 function hideInfoCard(){ document.getElementById('info-card').style.display='none'; }
 
-/* ========== Toolbar wiring ========== */
+/* toolbar wiring */
 document.getElementById('btn-export-png').onclick=()=>exportImg('png');
 document.getElementById('btn-export-pdf').onclick=()=>exportImg('pdf');
 document.getElementById('btn-delete').onclick=()=>deleteSelected();
@@ -1765,9 +1565,7 @@ document.getElementById('toggle-3d').onclick=()=>{
 
   const opening=(c3d.style.display===''||c3d.style.display==='none');
   if(opening){
-    // when 3D open, exit placement mode to avoid confusion
     if(placementMode) setPlacementMode(null);
-
     c3d.style.display='block';
     c2d.style.display='none';
     debug.style.display='block';
@@ -1787,23 +1585,22 @@ document.getElementById('toggle-3d').onclick=()=>{
   }
 };
 
-/* ========== Resize ========== */
+/* resize */
 window.addEventListener('resize',()=>{
   stage.width(window.innerWidth-640);
   stage.height(window.innerHeight);
   drawGrid();
-  drawRoomBoundary2D();
   layer.draw();
   if(warningLayer) warningLayer.draw();
   if(is3DVisible()) resize3D();
 });
 
-/* ========== Boot ========== */
+/* boot */
 setupTabs();
 renderDevices();
+renderZones();
 renderWalls();
 drawGrid();
-drawRoomBoundary2D();
 initWarningLayer();
 renderInspector();
 tryLoadFromLocalStorage();
