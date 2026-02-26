@@ -16,75 +16,112 @@
 
   <style>
     :root{
-      --bg-dark:#0f172a; --bg-sidebar:#1e293b; --primary:#3b82f6; --accent:#10b981; --danger:#ef4444; --border:#334155; --text:#f1f5f9;
+      --bg-dark:#0f172a; --bg-sidebar:#111827; --sidebar2:#0b1220;
+      --primary:#3b82f6; --accent:#10b981; --danger:#ef4444; --border:#263244; --text:#f1f5f9;
       --warn:#f59e0b;
     }
-    body{ margin:0; font-family:'Segoe UI',system-ui; background:var(--bg-dark); color:var(--text); overflow:hidden; }
-    .app{ display:grid; grid-template-columns:280px 1fr 320px; height:100vh; }
-    .sidebar{ background:var(--bg-sidebar); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:auto; }
-    .sidebar-header{ padding:20px; background:#111827; font-weight:bold; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:2; }
-    .tool-section{ padding:15px; border-bottom:1px solid var(--border); }
-    .tool-section-title{ font-size:12px; letter-spacing:.08em; color:#94a3b8; text-transform:uppercase; margin-bottom:10px; }
-    .item{ background:#334155; padding:10px; border-radius:6px; cursor:pointer; text-align:center; font-size:.8rem; margin-bottom:8px; user-select:none; }
-    .item:hover{ background:#475569; border:1px solid var(--primary); }
+    body{ margin:0; font-family: ui-sans-serif,system-ui,'Segoe UI'; background:var(--bg-dark); color:var(--text); overflow:hidden; }
+    .app{ display:grid; grid-template-columns:320px 1fr 320px; height:100vh; }
 
+    /* sidebar */
+    .sidebar{ background:linear-gradient(180deg,var(--bg-sidebar),var(--sidebar2)); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+    .sidebar-header{ padding:16px 16px 10px; background:rgba(17,24,39,.9); font-weight:800; border-bottom:1px solid rgba(148,163,184,.12); }
+    .library-title{ font-size:14px; letter-spacing:.06em; color:#e2e8f0; }
+    .tabs{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; padding:10px 16px 0; }
+    .tab{
+      text-align:center; padding:10px 0; border-radius:10px 10px 0 0;
+      background:rgba(148,163,184,.06); color:#94a3b8; cursor:pointer; user-select:none;
+      border:1px solid rgba(148,163,184,.12); border-bottom:none;
+    }
+    .tab.active{ background:rgba(30,41,59,.85); color:#38bdf8; border-color:rgba(56,189,248,.35); }
+    .tab-panel{
+      flex:1; overflow:auto;
+      margin:0 16px 16px;
+      border:1px solid rgba(148,163,184,.12);
+      border-top:none;
+      border-radius:0 12px 12px 12px;
+      background:rgba(15,23,42,.45);
+    }
+    .panel-inner{ padding:12px; }
+    .group-title{
+      display:flex; align-items:center; justify-content:space-between;
+      color:#cbd5e1; font-size:13px; font-weight:700;
+      padding:10px 10px; border-radius:10px;
+      cursor:pointer; user-select:none;
+    }
+    .group-title:hover{ background:rgba(148,163,184,.06); }
+    .group-items{ padding:0 0 8px; }
+    .lib-item{
+      display:grid; grid-template-columns:26px 1fr; gap:10px;
+      padding:10px 10px; border-radius:10px;
+      background:rgba(148,163,184,.06);
+      border:1px solid rgba(148,163,184,.12);
+      margin-top:8px;
+      cursor:pointer;
+    }
+    .lib-item:hover{ border-color:rgba(56,189,248,.5); background:rgba(56,189,248,.08); }
+    .lib-icon{
+      width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+      border-radius:8px; background:rgba(59,130,246,.14); color:#93c5fd;
+    }
+    .lib-name{ font-weight:800; color:#e2e8f0; font-size:14px; line-height:1.1; }
+    .lib-sub{ font-size:12px; color:#94a3b8; margin-top:2px; }
+    .hint{
+      color:#94a3b8; font-size:12px; line-height:1.35; margin-top:12px;
+      padding:10px; border:1px dashed rgba(148,163,184,.18); border-radius:12px;
+      background:rgba(2,6,23,.25);
+    }
+    .mode-pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:7px 10px; border-radius:999px;
+      border:1px solid rgba(56,189,248,.35);
+      color:#7dd3fc; background:rgba(56,189,248,.10);
+      font-size:12px; font-weight:700;
+    }
+
+    /* canvas + inspector */
     .canvas-area{ position:relative; background:#f1f5f9; }
     #container,#three-container{ width:100%; height:100%; }
     #three-container{ position:absolute; top:0; left:0; display:none; z-index:60; background:#0a0f1a; }
 
     .toolbar{
-      position:absolute; top:20px; left:50%; transform:translateX(-50%);
-      background:rgba(30,41,59,.95); padding:8px 16px; border-radius:50px;
-      display:flex; gap:12px; z-index:100; border:1px solid var(--border);
+      position:absolute; top:16px; left:50%; transform:translateX(-50%);
+      background:rgba(15,23,42,.88); padding:8px 14px; border-radius:999px;
+      display:flex; gap:12px; z-index:100; border:1px solid rgba(148,163,184,.18);
       align-items:center;
     }
     .tool-btn{ background:none; border:none; color:#cbd5e1; cursor:pointer; display:flex; align-items:center; }
     .tool-btn:hover{ color:#fff; }
-    .tool-divider{ width:1px; height:18px; background:rgba(148,163,184,.35); margin:0 2px; }
+    .tool-divider{ width:1px; height:18px; background:rgba(148,163,184,.25); margin:0 2px; }
 
-    .inspector{ background:#1e293b; border-left:1px solid var(--border); padding:20px; color:#cbd5e1; overflow:auto; }
-    .prop-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:15px; }
-    .prop-group{ display:flex; flex-direction:column; gap:4px; }
-    .prop-label{ font-size:.7rem; color:#94a3b8; text-transform:uppercase; }
-    input{ background:#0f172a; border:1px solid #334155; color:#fff; padding:8px; border-radius:6px; font-size:.9rem; }
-
-    .btn-action{
-      color:#fff; border:none; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold;
-      width:100%; margin-top:12px; display:flex; align-items:center; justify-content:center; gap:5px;
-    }
-
-    #debug3d{
-      position:absolute; right:10px; bottom:10px; z-index:200;
-      background:rgba(15,23,42,.85); color:#e2e8f0; font-size:12px;
-      padding:8px 10px; border:1px solid rgba(148,163,184,.35);
-      border-radius:8px; display:none; white-space:pre;
-    }
-
-    #toast{
-      position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
-      background:rgba(15,23,42,.9); color:#e2e8f0; font-size:13px;
-      padding:8px 12px; border-radius:10px; border:1px solid rgba(148,163,184,.25);
-      z-index:300; display:none;
-    }
-
+    .inspector{ background:#0b1220; border-left:1px solid var(--border); padding:18px; color:#cbd5e1; overflow:auto; }
     .chip{
       display:inline-flex; align-items:center; gap:6px;
       padding:6px 10px; border-radius:999px;
-      background:rgba(148,163,184,.12);
-      border:1px solid rgba(148,163,184,.25);
-      color:#e2e8f0; font-size:12px;
-      user-select:none;
+      background:rgba(148,163,184,.10);
+      border:1px solid rgba(148,163,184,.18);
+      color:#e2e8f0; font-size:12px; user-select:none;
     }
-    .toggle{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:8px 10px; border-radius:10px;
-      border:1px solid rgba(148,163,184,.2);
-      background:rgba(15,23,42,.35);
-      margin-top:10px;
+    .prop-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+    .prop-group{ display:flex; flex-direction:column; gap:4px; }
+    .prop-label{ font-size:.7rem; color:#94a3b8; text-transform:uppercase; }
+    input{ background:#020617; border:1px solid rgba(148,163,184,.22); color:#fff; padding:8px; border-radius:10px; font-size:.9rem; }
+    .btn-action{
+      color:#fff; border:none; padding:10px; border-radius:10px; cursor:pointer; font-weight:800;
+      width:100%; margin-top:12px; display:flex; align-items:center; justify-content:center; gap:6px;
     }
-    .toggle input{ width:auto; }
-    .hint{ color:#94a3b8; font-size:12px; line-height:1.35; margin-top:10px; }
-
+    #debug3d{
+      position:absolute; right:10px; bottom:10px; z-index:200;
+      background:rgba(15,23,42,.85); color:#e2e8f0; font-size:12px;
+      padding:8px 10px; border:1px solid rgba(148,163,184,.25);
+      border-radius:10px; display:none; white-space:pre;
+    }
+    #toast{
+      position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+      background:rgba(15,23,42,.9); color:#e2e8f0; font-size:13px;
+      padding:8px 12px; border-radius:12px; border:1px solid rgba(148,163,184,.18);
+      z-index:300; display:none;
+    }
     #info-card{
       position:absolute;
       min-width: 240px;
@@ -100,14 +137,14 @@
       box-shadow: 0 18px 50px rgba(0,0,0,0.35);
       backdrop-filter: blur(6px);
     }
-    .info-title{ font-weight:700; font-size:16px; margin-bottom:10px; display:flex; align-items:center; gap:10px; }
+    .info-title{ font-weight:800; font-size:16px; margin-bottom:10px; display:flex; align-items:center; gap:10px; }
     .info-icon{
       width:34px; height:34px; border-radius:10px;
       background: rgba(59,130,246,0.18);
       border: 1px solid rgba(59,130,246,0.45);
       display:flex; align-items:center; justify-content:center;
       color:#93c5fd;
-      font-weight:800;
+      font-weight:900;
     }
     .info-row{
       display:flex; justify-content:space-between; gap:14px;
@@ -123,50 +160,92 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="sidebar-header">LabCAD Web Pro</div>
-
-    <div class="tool-section">
-      <div class="tool-section-title">房間</div>
-      <div class="item" onclick="focusRoomSettings()">房間設定（寬/長/牆高）</div>
+    <div class="sidebar-header">
+      <div class="library-title">元件庫</div>
+      <div id="placement-pill" style="margin-top:10px; display:none;">
+        <span class="mode-pill">放置模式：<span id="placement-name"></span>（點畫布放置 / Esc 取消）</span>
+      </div>
     </div>
 
-    <div class="tool-section">
-      <div class="tool-section-title">區域</div>
-      <div class="item" onclick="addZone('新規劃區域')">新增區域</div>
+    <div class="tabs">
+      <div class="tab active" data-tab="devices">設備</div>
+      <div class="tab" data-tab="zones">區域</div>
+      <div class="tab" data-tab="walls">牆壁</div>
     </div>
 
-    <div class="tool-section" id="device-catalog">
-      <div class="tool-section-title">設備</div>
-      <div style="color:#94a3b8;font-size:12px;">載入中...</div>
+    <div class="tab-panel">
+      <div class="panel-inner">
+        <!-- DEVICES -->
+        <div id="tab-devices">
+          <div class="group-title" data-collapse="grp-instruments">
+            <div>🔬 儀器設備</div><div style="color:#64748b">▾</div>
+          </div>
+          <div class="group-items" id="grp-instruments"></div>
+
+          <div class="group-title" data-collapse="grp-furniture">
+            <div>🪑 家具設施</div><div style="color:#64748b">▾</div>
+          </div>
+          <div class="group-items" id="grp-furniture"></div>
+
+          <div class="hint">
+            直接點擊清單新增設備，拖曳調整位置。<br/>
+            Shift：多選 / Delete：刪除。
+          </div>
+        </div>
+
+        <!-- ZONES -->
+        <div id="tab-zones" style="display:none;">
+          <div class="lib-item" data-action="place-zone" data-icon="square" data-name="規劃區域" data-sub="3000×2000mm（可縮放）">
+            <div class="lib-icon">⬚</div>
+            <div>
+              <div class="lib-name">新增區域</div>
+              <div class="lib-sub">3000×2000mm（可縮放）</div>
+            </div>
+          </div>
+          <div class="hint">
+            點「新增區域」後，在畫布點一下放置。<br/>
+            區域可縮放、可框選多個設備。
+          </div>
+        </div>
+
+        <!-- WALLS -->
+        <div id="tab-walls" style="display:none;">
+          <div id="wall-items"></div>
+          <div class="hint">
+            點選牆壁類型後，在畫布上點擊放置。<br/>
+            設備靠近牆邊會自動貼齊（吸附）。
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div style="margin-top:auto; padding:20px; position:sticky; bottom:0; background:linear-gradient(180deg, rgba(30,41,59,0), rgba(30,41,59,1) 30%);">
-      <button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button>
+    <div style="padding:16px; border-top:1px solid rgba(148,163,184,.12);">
+      <button class="btn-action" style="background:var(--accent);" id="toggle-3d">查看 3D 預覽</button>
       <div class="hint" style="margin-top:10px;">
         單位：1格=10cm=100mm（格線10px）<br/>
         3D：點選物件可反選到2D（Shift可多選）<br/>
-        7A v2：橘色距離不足會顯示距離線+mm
+        7A v2：橘色距離不足顯示距離線+mm
       </div>
     </div>
   </aside>
 
   <main class="canvas-area">
-    <div class="toolbar" title="工具列">
-      <button class="tool-btn" onclick="exportImg('png')" title="匯出 PNG"><i data-lucide="image"></i></button>
-      <button class="tool-btn" onclick="exportImg('pdf')" title="匯出 PDF"><i data-lucide="file-text"></i></button>
-      <button class="tool-btn" onclick="deleteSelected()" title="刪除選取"><i data-lucide="trash-2"></i></button>
+    <div class="toolbar">
+      <button class="tool-btn" id="btn-export-png" title="匯出 PNG"><i data-lucide="image"></i></button>
+      <button class="tool-btn" id="btn-export-pdf" title="匯出 PDF"><i data-lucide="file-text"></i></button>
+      <button class="tool-btn" id="btn-delete" title="刪除選取"><i data-lucide="trash-2"></i></button>
 
       <div class="tool-divider"></div>
 
-      <button class="tool-btn" onclick="exportDesignJSON()" title="匯出設計 JSON"><i data-lucide="download"></i></button>
-      <button class="tool-btn" onclick="triggerImportJSON()" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
+      <button class="tool-btn" id="btn-export-json" title="匯出設計 JSON"><i data-lucide="download"></i></button>
+      <button class="tool-btn" id="btn-import-json" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
       <input id="import-json-input" type="file" accept="application/json" style="display:none" />
-      <button class="tool-btn" onclick="resetDesign(true)" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
+      <button class="tool-btn" id="btn-reset" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
 
       <div class="tool-divider"></div>
 
-      <button class="tool-btn" onclick="toggleGrid()" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
-      <button class="tool-btn" onclick="toggleSnap()" title="吸附格線"><i data-lucide="magnet"></i></button>
+      <button class="tool-btn" id="btn-grid" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
+      <button class="tool-btn" id="btn-snap" title="吸附格線"><i data-lucide="magnet"></i></button>
     </div>
 
     <div id="container"></div>
@@ -177,15 +256,16 @@
   </main>
 
   <aside class="inspector">
-    <h3 id="ins-title">屬性</h3>
+    <h3 style="margin:0 0 12px;">屬性</h3>
     <div id="inspector-content">請選擇物件</div>
   </aside>
 </div>
 
 <script>
+/* ========== Icons ========== */
 lucide.createIcons();
 
-/* ===== helpers ===== */
+/* ========== Helpers ========== */
 function toast(msg, ms=1200){
   const el=document.getElementById('toast');
   el.textContent=msg; el.style.display='block';
@@ -195,7 +275,7 @@ function safeInt(v,f=0){ const n=parseInt(v,10); return Number.isFinite(n)?n:f; 
 function clamp(v,min,max){ return Math.max(min, Math.min(max,v)); }
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-/* ===== units ===== */
+/* ========== Units ========== */
 const GRID_PX=10;
 const MM_PER_GRID=100;
 const MM_PER_PX=MM_PER_GRID/GRID_PX;
@@ -206,54 +286,156 @@ function fmtMm(mm){ return `${Math.round(mm)}mm`; }
 function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
 function snapPx(v){ return Math.round(v/GRID_PX)*GRID_PX; }
 
-/* ===== room ===== */
+/* ========== Room (FIXED, no UI) ========== */
 const ROOM={ widthMm:6000, depthMm:4000, wallHeightMm:2800, wallThicknessMm:100 };
-function focusRoomSettings(){
-  selectedNodes=[]; selectedNode=null;
-  tr.nodes([]);
-  renderInspector('room');
-  layer.draw();
-  if(is3DVisible()) update3D();
-}
 
-/* ===== device catalog ===== */
+/* ========== Placement Mode ========== */
+let placementMode = null; // { kind:'device'|'zone'|'wall', key, label }
+function setPlacementMode(mode){
+  placementMode = mode;
+  const pill=document.getElementById('placement-pill');
+  const name=document.getElementById('placement-name');
+  if(mode){
+    name.textContent = mode.label || mode.key || mode.kind;
+    pill.style.display='block';
+    document.body.style.cursor = 'crosshair';
+  }else{
+    pill.style.display='none';
+    document.body.style.cursor = 'default';
+  }
+}
+function cancelPlacement(){ setPlacementMode(null); toast('已取消放置模式'); }
+window.addEventListener('keydown',(e)=>{
+  const tag=document.activeElement?.tagName?.toLowerCase();
+  const typing=tag==='input'||tag==='textarea';
+  if(e.key==='Escape'){
+    hideInfoCard();
+    if(placementMode){ cancelPlacement(); return; }
+    clearSelection();
+    layer.draw();
+    sync3DSelectionHighlight();
+    return;
+  }
+  if(!typing && (e.key==='Delete'||e.key==='Backspace')){
+    deleteSelected();
+    e.preventDefault();
+  }
+});
+
+/* ========== Catalog Data ========== */
 const DEVICE_CATALOG=[
-  { key:'bench', name:'實驗桌', wMm:1200, dMm:600,  hMm:800,  accent:'#60a5fa' },
-  { key:'hood',  name:'排煙櫃', wMm:1000, dMm:800,  hMm:2000, accent:'#60a5fa' },
-  { key:'sink',  name:'洗滌槽', wMm:900,  dMm:600,  hMm:900,  accent:'#60a5fa' },
-  { key:'fridge', name:'冰箱', wMm:700,  dMm:700,  hMm:1800, accent:'#22c55e' },
-  { key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, accent:'#38bdf8' },
-  { key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, accent:'#22c55e' },
-  { key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, accent:'#a78bfa' },
+  { group:'instruments', key:'centrifuge', name:'離心機', wMm:600, dMm:600, hMm:900, accent:'#38bdf8', icon:'settings' },
+  { group:'instruments', key:'incubator', name:'培養箱', wMm:700, dMm:600, hMm:1600, accent:'#a78bfa', icon:'thermometer' },
+  { group:'instruments', key:'fridge', name:'冰箱', wMm:700, dMm:700, hMm:1800, accent:'#22c55e', icon:'snowflake' },
+  { group:'instruments', key:'ultra_low_freezer', name:'超低溫冰箱', wMm:800, dMm:800, hMm:2000, accent:'#22c55e', icon:'snowflake' },
+
+  { group:'furniture', key:'bench', name:'實驗桌', wMm:1200, dMm:600, hMm:800, accent:'#60a5fa', icon:'table' },
+  { group:'furniture', key:'hood', name:'排煙櫃', wMm:1000, dMm:800, hMm:2000, accent:'#60a5fa', icon:'wind' },
+  { group:'furniture', key:'sink', name:'洗滌槽', wMm:900, dMm:600, hMm:900, accent:'#60a5fa', icon:'droplets' },
 ];
 const DEVICE_BY_KEY=new Map(DEVICE_CATALOG.map(d=>[d.key,d]));
-function renderDeviceCatalog(){
-  const section=document.getElementById('device-catalog');
-  const title=section.querySelector('.tool-section-title');
-  section.innerHTML=''; section.appendChild(title);
+
+/* Wall Catalog (reasonable defaults) */
+const WALL_CATALOG = [
+  { key:'wall_h_full', label:'水平隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'h', icon:'🧱', sub:'2000×120mm · 120mm厚' },
+  { key:'wall_v_full', label:'垂直隔牆', lengthMm:2000, thicknessMm:120, heightMm:2800, orientation:'v', icon:'🧱', sub:'120×2000mm · 120mm厚' },
+  { key:'wall_h_panel', label:'水平隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'h', icon:'🧱', sub:'1600×60mm · 60mm厚' },
+  { key:'wall_v_panel', label:'垂直隔板', lengthMm:1600, thicknessMm:60, heightMm:2800, orientation:'v', icon:'🧱', sub:'60×1600mm · 60mm厚' },
+  { key:'wall_h_half', label:'水平半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'h', icon:'🧱', sub:'1200×100mm · 100mm厚' },
+  { key:'wall_v_half', label:'垂直半牆', lengthMm:1200, thicknessMm:100, heightMm:1200, orientation:'v', icon:'🧱', sub:'100×1200mm · 100mm厚' },
+];
+const WALL_BY_KEY = new Map(WALL_CATALOG.map(w=>[w.key,w]));
+
+/* ========== Sidebar Rendering ========== */
+function renderDevices(){
+  const instruments=document.getElementById('grp-instruments');
+  const furniture=document.getElementById('grp-furniture');
+  instruments.innerHTML=''; furniture.innerHTML='';
+
   DEVICE_CATALOG.forEach(d=>{
-    const div=document.createElement('div');
-    div.className='item';
-    div.textContent=d.name;
-    div.onclick=()=>addDeviceFromCatalog(d.key);
-    section.appendChild(div);
+    const el=document.createElement('div');
+    el.className='lib-item';
+    el.dataset.action='place-device';
+    el.dataset.key=d.key;
+    el.dataset.name=d.name;
+    el.dataset.sub=`${d.wMm}×${d.dMm}mm`;
+    el.innerHTML=`
+      <div class="lib-icon">${iconForDevice(d)}</div>
+      <div>
+        <div class="lib-name">${escapeHtml(d.name)}</div>
+        <div class="lib-sub">${d.wMm}×${d.dMm}mm</div>
+      </div>
+    `;
+    el.onclick=()=> setPlacementMode({ kind:'device', key:d.key, label:d.name });
+    (d.group==='instruments'?instruments:furniture).appendChild(el);
   });
 }
-function addDeviceFromCatalog(key){
-  const d=DEVICE_BY_KEY.get(key);
-  if(!d) return;
-  addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), 'rgba(148,163,184,0.12)', '#1e293b', d.key, d.accent);
+function iconForDevice(d){
+  // simple unicode fallback; keeping it stable in sidebar
+  const map = {
+    centrifuge:'⚙️',
+    incubator:'🌡️',
+    fridge:'❄️',
+    ultra_low_freezer:'🧊',
+    bench:'🧱',
+    hood:'🌬️',
+    sink:'💧'
+  };
+  return map[d.key] || '⬚';
+}
+function renderWalls(){
+  const root=document.getElementById('wall-items');
+  root.innerHTML='';
+  WALL_CATALOG.forEach(w=>{
+    const el=document.createElement('div');
+    el.className='lib-item';
+    el.innerHTML=`
+      <div class="lib-icon">${w.icon}</div>
+      <div>
+        <div class="lib-name">${escapeHtml(w.label)}</div>
+        <div class="lib-sub">${escapeHtml(w.sub)}</div>
+      </div>
+    `;
+    el.onclick = ()=> setPlacementMode({ kind:'wall', key:w.key, label:w.label });
+    root.appendChild(el);
+  });
+}
+function setupTabs(){
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      tab.classList.add('active');
+      const name=tab.dataset.tab;
+      document.getElementById('tab-devices').style.display = (name==='devices') ? 'block':'none';
+      document.getElementById('tab-zones').style.display = (name==='zones') ? 'block':'none';
+      document.getElementById('tab-walls').style.display = (name==='walls') ? 'block':'none';
+    });
+  });
+
+  // collapse groups
+  document.querySelectorAll('[data-collapse]').forEach(t=>{
+    t.addEventListener('click', ()=>{
+      const id=t.dataset.collapse;
+      const el=document.getElementById(id);
+      el.style.display = (el.style.display==='none') ? 'block' : 'none';
+    });
+  });
+
+  // zone placement item
+  document.querySelector('[data-action="place-zone"]').addEventListener('click', ()=>{
+    setPlacementMode({ kind:'zone', key:'zone', label:'規劃區域' });
+  });
 }
 
-/* ===== 7A v2 collision/clearance + distance lines ===== */
-const SAFETY_CLEARANCE_MM_DEFAULT=100;
-let collisionPairs=[]; // {aId,bId,type, gapMm, seg:{ax,ay,bx,by}}
-let conflictIds=new Set();
-let collisionTimer=null;
+/* ========== Konva 2D ========== */
+const stage=new Konva.Stage({ container:'container', width:window.innerWidth-640, height:window.innerHeight });
+const gridLayer=new Konva.Layer();
+const layer=new Konva.Layer();
+stage.add(gridLayer); stage.add(layer);
 
+// warning overlay
 let warningLayer=null;
 let warningLinesGroup=null;
-
 function initWarningLayer(){
   if(warningLayer) return;
   warningLayer = new Konva.Layer();
@@ -262,162 +444,19 @@ function initWarningLayer(){
   warningLayer.add(warningLinesGroup);
 }
 
-function scheduleCollisionCheck(){
-  clearTimeout(collisionTimer);
-  collisionTimer=setTimeout(recomputeCollisions, 80);
-}
-
-function rectsOverlap(a,b){
-  return !(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y);
-}
-
-function getClosestSegmentBetweenRects(a,b){
-  // Returns closest points (ax,ay) (bx,by) between axis-aligned rectangles (Konva client rects)
-  const ax1=a.x, ax2=a.x+a.width, ay1=a.y, ay2=a.y+a.height;
-  const bx1=b.x, bx2=b.x+b.width, by1=b.y, by2=b.y+b.height;
-
-  // clamp a point from one rect to the other rect
-  function clampPointToRect(px,py, r){
-    const rx1=r.x, rx2=r.x+r.width, ry1=r.y, ry2=r.y+r.height;
-    return {
-      x: clamp(px, rx1, rx2),
-      y: clamp(py, ry1, ry2)
-    };
-  }
-
-  // Candidate points: centers projected to edges
-  const acx=(ax1+ax2)/2, acy=(ay1+ay2)/2;
-  const bcx=(bx1+bx2)/2, bcy=(by1+by2)/2;
-
-  const aToB = clampPointToRect(acx, acy, b);
-  const bToA = clampPointToRect(bcx, bcy, a);
-
-  // Also check edge-to-edge axis separations (horizontal/vertical)
-  // If separated in x direction
-  let best = { ax: bToA.x, ay: bToA.y, bx: aToB.x, by: aToB.y };
-  function dist2(s){
-    const dx=s.ax-s.bx, dy=s.ay-s.by;
-    return dx*dx+dy*dy;
-  }
-  let bestD2 = dist2(best);
-
-  // If one rect is left of the other
-  if(ax2 < bx1){
-    // a right edge to b left edge
-    const y = clamp(acy, by1, by2);
-    const s = { ax: ax2, ay: clamp(y, ay1, ay2), bx: bx1, by: y };
-    const d2 = dist2(s);
-    if(d2 < bestD2){ best=s; bestD2=d2; }
-  } else if(bx2 < ax1){
-    const y = clamp(bcy, ay1, ay2);
-    const s = { ax: ax1, ay: y, bx: bx2, by: clamp(y, by1, by2) };
-    const d2 = dist2(s);
-    if(d2 < bestD2){ best=s; bestD2=d2; }
-  }
-
-  // vertical separation
-  if(ay2 < by1){
-    const x = clamp(acx, bx1, bx2);
-    const s = { ax: clamp(x, ax1, ax2), ay: ay2, bx: x, by: by1 };
-    const d2 = dist2(s);
-    if(d2 < bestD2){ best=s; bestD2=d2; }
-  } else if(by2 < ay1){
-    const x = clamp(bcx, ax1, ax2);
-    const s = { ax: x, ay: ay1, bx: clamp(x, bx1, bx2), by: by2 };
-    const d2 = dist2(s);
-    if(d2 < bestD2){ best=s; bestD2=d2; }
-  }
-
-  return best;
-}
-
-function recomputeCollisions(){
-  initWarningLayer();
-  warningLinesGroup.destroyChildren();
-
-  const devices=layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='device');
-  collisionPairs=[];
-  conflictIds=new Set();
-
-  for(let i=0;i<devices.length;i++){
-    for(let j=i+1;j<devices.length;j++){
-      const A=devices[i], B=devices[j];
-      const ra=A.getClientRect();
-      const rb=B.getClientRect();
-
-      if(rectsOverlap(ra, rb)){
-        collisionPairs.push({ aId:A._id, bId:B._id, type:'overlap', gapMm: 0, seg:null });
-        conflictIds.add(A._id); conflictIds.add(B._id);
-        continue;
-      }
-
-      const ca=A.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
-      const cb=B.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
-      const c=Math.max(ca, cb);
-
-      const seg = getClosestSegmentBetweenRects(ra, rb);
-      const dx = seg.ax - seg.bx, dy = seg.ay - seg.by;
-      const gapPx = Math.sqrt(dx*dx + dy*dy);
-      const gapMm = pxToMm(gapPx);
-
-      if(gapMm < c){
-        collisionPairs.push({ aId:A._id, bId:B._id, type:'clearance', gapMm, needMm: c, seg });
-        conflictIds.add(A._id); conflictIds.add(B._id);
-
-        // draw distance line + label
-        const line = new Konva.Line({
-          points:[seg.ax, seg.ay, seg.bx, seg.by],
-          stroke: 'rgba(245, 158, 11, 0.95)',
-          strokeWidth: 2,
-          dash: [8,6]
-        });
-        const midx = (seg.ax + seg.bx)/2;
-        const midy = (seg.ay + seg.by)/2;
-        const text = new Konva.Text({
-          x: midx + 6,
-          y: midy + 6,
-          text: `${gapMm}mm / 需≥${c}mm`,
-          fontSize: 12,
-          fill: '#b45309'
-        });
-        const bg = new Konva.Rect({
-          x: text.x() - 4,
-          y: text.y() - 2,
-          width: text.width() + 8,
-          height: text.height() + 4,
-          fill: 'rgba(255, 237, 213, 0.75)',
-          stroke: 'rgba(245, 158, 11, 0.65)',
-          strokeWidth: 1,
-          cornerRadius: 6
-        });
-
-        warningLinesGroup.add(line, bg, text);
-      }
-    }
-  }
-
-  devices.forEach(updateUI);
-  layer.draw();
-  warningLayer.draw();
-  renderInspector();
-  if(is3DVisible()) sync3DConflictHighlight();
-}
-
-/* ===== Konva 2D base ===== */
-const stage=new Konva.Stage({ container:'container', width:window.innerWidth-600, height:window.innerHeight });
-const gridLayer=new Konva.Layer();
-const layer=new Konva.Layer();
-stage.add(gridLayer); stage.add(layer);
-
-const tr=new Konva.Transformer({ keepRatio:false });
+const tr=new Konva.Transformer({
+  keepRatio:false,
+  rotateEnabled:true,
+  enabledAnchors:['top-left','top-right','bottom-left','bottom-right','middle-left','middle-right','top-center','bottom-center']
+});
 layer.add(tr);
 
 let selectedNodes=[];
 let selectedNode=null;
-
 let gridVisible=true;
 let snapEnabled=true;
 
+/* Grid */
 function drawGrid(){
   gridLayer.destroyChildren();
   if(!gridVisible){ gridLayer.draw(); return; }
@@ -429,6 +468,7 @@ function drawGrid(){
 function toggleGrid(){ gridVisible=!gridVisible; drawGrid(); if(warningLayer) warningLayer.draw(); scheduleAutosave(); }
 function toggleSnap(){ snapEnabled=!snapEnabled; scheduleAutosave(); }
 
+/* Room boundary 2D (fixed) */
 let roomRect2D=null;
 function drawRoomBoundary2D(){
   if(roomRect2D) roomRect2D.destroy();
@@ -439,34 +479,69 @@ function drawRoomBoundary2D(){
     width:wPx, height:dPx,
     stroke:'rgba(15,23,42,0.45)', strokeWidth:2,
     fill:'rgba(15,23,42,0.03)',
-    listening:false
+    listening:false,
+    name:'room-boundary'
   });
   gridLayer.add(roomRect2D);
   gridLayer.draw();
 }
 function getRoomRectPx(){ if(!roomRect2D) drawRoomBoundary2D(); return roomRect2D.getClientRect(); }
 
-/* selection rect */
+/* Selection rect */
 let selecting=false;
-let selectionRect=new Konva.Rect({ x:0,y:0,width:0,height:0, fill:'rgba(59,130,246,0.12)', stroke:'rgba(59,130,246,0.9)', strokeWidth:1, visible:false, listening:false });
+let selectionRect=new Konva.Rect({
+  x:0,y:0,width:0,height:0,
+  fill:'rgba(59,130,246,0.12)',
+  stroke:'rgba(59,130,246,0.9)',
+  strokeWidth:1,
+  visible:false,
+  listening:false
+});
 layer.add(selectionRect);
 let startPos=null;
 
-/* CRUD */
-function addZone(name){
-  createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.10)', '#3b82f6', 'zone', '#60a5fa');
-}
-function addDevice(name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
-  createNode('device', name, wPx, dPx, hPx, fill, stroke, deviceKey||'device', accent || '#60a5fa');
-}
-function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
+/* ========== Nodes creation ========== */
+const SAFETY_CLEARANCE_MM_DEFAULT=100;
+
+// used for restoring stroke after conflict cleared
+const DEFAULT_STROKE_BY_KIND = {
+  device: '#1e293b',
+  zone: '#3b82f6',
+  wall: '#fb923c'
+};
+
+function createNode(kind, name, wPx, dPx, hPx, fill, stroke, key, extra={}){
   const group=new Konva.Group({
-    x:100,y:100, draggable:true, name:type,
-    customData:{ height3dPx:hPx||0, deviceKey, clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT, accent: accent || '#60a5fa' }
+    x:100, y:100,
+    draggable:true,
+    name: kind,
+    customData: Object.assign({
+      height3dPx: hPx||0,
+      deviceKey: key,
+      clearanceMm: SAFETY_CLEARANCE_MM_DEFAULT,
+      accent: extra.accent || '#60a5fa',
+      wallThicknessMm: extra.wallThicknessMm || 0,
+      wallHeightMm: extra.wallHeightMm || 0
+    }, extra)
   });
 
-  const rect=new Konva.Rect({ width:wPx, height:dPx, fill, stroke, name:'main-rect', dash: type==='zone' ? [10,5] : [] });
-  const title=new Konva.Text({ text:name, fontSize:14, fill:stroke, padding:8, name:'title-text' });
+  const rect=new Konva.Rect({
+    width:wPx,
+    height:dPx,
+    fill, stroke,
+    strokeWidth: 1,
+    name:'main-rect',
+    dash: kind==='zone' ? [10,5] : []
+  });
+
+  const title=new Konva.Text({
+    text:name,
+    fontSize:13,
+    fill:stroke,
+    padding:8,
+    name:'title-text'
+  });
+
   const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
 
   group.add(rect,title,dim);
@@ -475,6 +550,7 @@ function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
   group.on('dragmove',()=>{
     if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
     constrainToRoom(group);
+    if(kind==='device') maybeSnapDeviceToWalls(group);
     updateUI(group);
     scheduleAutosave();
     scheduleCollisionCheck();
@@ -484,6 +560,7 @@ function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
   group.on('transformend',()=>{
     if(snapEnabled) normalizeGroupToGrid(group);
     constrainToRoom(group);
+    if(kind==='device') maybeSnapDeviceToWalls(group);
     scheduleAutosave();
     scheduleCollisionCheck();
     if(is3DVisible()) update3D();
@@ -496,7 +573,7 @@ function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
   });
 
   layer.add(group);
-  if(type==='zone') group.moveToBottom();
+  if(kind==='zone') group.moveToBottom();
 
   selectSingleNode(group);
   layer.draw();
@@ -504,15 +581,88 @@ function createNode(type,name,wPx,dPx,hPx,fill,stroke,deviceKey,accent){
   scheduleAutosave();
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
+
+  return group;
 }
 
+function addDeviceByKey(key, x, y){
+  const d = DEVICE_BY_KEY.get(key);
+  if(!d) return;
+  const node = createNode(
+    'device',
+    d.name,
+    mmToPx(d.wMm),
+    mmToPx(d.dMm),
+    mmToPx(d.hMm),
+    'rgba(148,163,184,0.10)',
+    DEFAULT_STROKE_BY_KIND.device,
+    d.key,
+    { accent: d.accent }
+  );
+  node.position({ x, y });
+  if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
+  constrainToRoom(node);
+  updateUI(node);
+  layer.draw();
+}
+
+function addZoneAt(x, y){
+  const node = createNode(
+    'zone',
+    '規劃區域',
+    mmToPx(3000),
+    mmToPx(2000),
+    0,
+    'rgba(59,130,246,0.10)',
+    DEFAULT_STROKE_BY_KIND.zone,
+    'zone',
+    {}
+  );
+  node.position({ x, y });
+  if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
+  constrainToRoom(node);
+  updateUI(node);
+  layer.draw();
+}
+
+function addWallByKey(key, x, y){
+  const w = WALL_BY_KEY.get(key);
+  if(!w) return;
+
+  const lenPx = mmToPx(w.lengthMm);
+  const thPx = mmToPx(w.thicknessMm);
+
+  const widthPx = (w.orientation === 'h') ? lenPx : thPx;
+  const heightPx = (w.orientation === 'h') ? thPx : lenPx;
+
+  const node = createNode(
+    'wall',
+    w.label,
+    widthPx,
+    heightPx,
+    0,
+    'rgba(251, 146, 60, 0.15)',
+    DEFAULT_STROKE_BY_KIND.wall,
+    w.key,
+    { wallThicknessMm: w.thicknessMm, wallHeightMm: w.heightMm, wallOrientation: w.orientation }
+  );
+
+  node.position({ x, y });
+  if(snapEnabled) node.position({ x:snapPx(x), y:snapPx(y) });
+  constrainToRoom(node);
+  updateUI(node);
+  layer.draw();
+}
+
+/* normalize sizes after transformer */
 function normalizeGroupToGrid(group){
-  group.x(snapPx(group.x())); group.y(snapPx(group.y()));
-  const rect=group.findOne('.main-rect');
-  const absW=rect.width()*group.scaleX();
-  const absH=rect.height()*group.scaleY();
-  const targetW=Math.max(GRID_PX, snapPx(absW));
-  const targetH=Math.max(GRID_PX, snapPx(absH));
+  group.x(snapPx(group.x()));
+  group.y(snapPx(group.y()));
+  const rect = group.findOne('.main-rect');
+  const absW = rect.width()*group.scaleX();
+  const absH = rect.height()*group.scaleY();
+  const targetW = Math.max(GRID_PX, snapPx(absW));
+  const targetH = Math.max(GRID_PX, snapPx(absH));
   group.scaleX(targetW/rect.width());
   group.scaleY(targetH/rect.height());
 }
@@ -526,31 +676,36 @@ function constrainToRoom(group){
     y: clamp(group.y(), rr.y, rr.y+rr.height-h)
   });
 }
-
 function updateUI(group){
   const rect=group.findOne('.main-rect');
   const dim=group.findOne('.dim-label');
-  const wPx=rect.width()*group.scaleX();
-  const dPx=rect.height()*group.scaleY();
-  dim.text(`${fmtMm(pxToMm(wPx))} x ${fmtMm(pxToMm(dPx))}`);
+
+  const wPx = rect.width()*group.scaleX();
+  const dPx = rect.height()*group.scaleY();
+
+  dim.text(`${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}`);
   dim.x(rect.width()-dim.width()-5);
   dim.y(rect.height()-15);
 
+  // conflict rendering
   if(group.name()==='device'){
     if(conflictIds.has(group._id)){
       const hard = collisionPairs.some(p => p.type==='overlap' && (p.aId===group._id || p.bId===group._id));
       rect.stroke(hard ? '#ef4444' : '#f59e0b');
       rect.strokeWidth(2);
     }else{
-      rect.stroke('#1e293b');
+      rect.stroke(DEFAULT_STROKE_BY_KIND.device);
       rect.strokeWidth(1);
     }
+  }else if(group.name()==='wall'){
+    rect.stroke(DEFAULT_STROKE_BY_KIND.wall);
+    rect.strokeWidth(2);
   }
 
   if(selectedNodes.includes(group)) renderInspector();
 }
 
-/* selection model */
+/* ========== Selection ========== */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
@@ -573,10 +728,33 @@ function toggleSelectNode(node){
   applyTransformer(); renderInspector();
 }
 
-/* click empty + marquee */
-stage.on('click tap',(e)=>{ if(e.target===stage){ clearSelection(); if(is3DVisible()) update3D(); }});
+/* ========== Stage interactions ========== */
+stage.on('click tap', (e)=>{
+  // placement mode: click to place at pointer
+  if(placementMode && e.target===stage){
+    const p = stage.getPointerPosition();
+    if(!p) return;
+    const x = p.x, y = p.y;
+
+    if(placementMode.kind === 'device') addDeviceByKey(placementMode.key, x, y);
+    if(placementMode.kind === 'zone') addZoneAt(x, y);
+    if(placementMode.kind === 'wall') addWallByKey(placementMode.key, x, y);
+
+    // exit after place
+    setPlacementMode(null);
+    return;
+  }
+
+  // normal clear selection
+  if(e.target===stage){
+    clearSelection();
+    if(is3DVisible()) update3D();
+  }
+});
+
 stage.on('mousedown touchstart',(e)=>{
   if(is3DVisible()) return;
+  if(placementMode) return; // don't marquee while in placement
   if(e.target!==stage) return;
   selecting=true;
   startPos=stage.getPointerPosition();
@@ -600,9 +778,8 @@ stage.on('mouseup touchend',(e)=>{
   selecting=false;
   selectionRect.visible(false);
   layer.draw();
-
   const box=selectionRect.getClientRect();
-  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
+  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall'));
   const additive=e.evt && e.evt.shiftKey;
   const hits=groups.filter(g=>Konva.Util.haveIntersection(box, g.getClientRect()));
   if(!additive) selectedNodes=[];
@@ -612,34 +789,181 @@ stage.on('mouseup touchend',(e)=>{
   if(is3DVisible()) update3D();
 });
 
-/* inspector */
-function renderInspector(mode){
+/* ========== Wall snapping (device->wall) ========== */
+function maybeSnapDeviceToWalls(deviceGroup){
+  // Axis-aligned snapping based on 2D client rects (simple & stable)
+  const SNAP_MM = 50;
+  const snapPxTol = mmToPx(SNAP_MM);
+
+  const devRect = deviceGroup.getClientRect();
+  const walls = layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='wall');
+  if(walls.length===0) return;
+
+  // choose nearest snap
+  let best = null;
+
+  walls.forEach(w=>{
+    const wr = w.getClientRect();
+
+    // snap dev left to wall right (touch)
+    const dx1 = Math.abs(devRect.x - (wr.x + wr.width));
+    if(dx1 < snapPxTol) best = chooseBest(best, { type:'x', value: (wr.x + wr.width) - devRect.x });
+
+    // snap dev right to wall left
+    const dx2 = Math.abs((devRect.x+devRect.width) - wr.x);
+    if(dx2 < snapPxTol) best = chooseBest(best, { type:'x', value: wr.x - (devRect.x+devRect.width) });
+
+    // snap dev top to wall bottom
+    const dy1 = Math.abs(devRect.y - (wr.y + wr.height));
+    if(dy1 < snapPxTol) best = chooseBest(best, { type:'y', value: (wr.y + wr.height) - devRect.y });
+
+    // snap dev bottom to wall top
+    const dy2 = Math.abs((devRect.y+devRect.height) - wr.y);
+    if(dy2 < snapPxTol) best = chooseBest(best, { type:'y', value: wr.y - (devRect.y+devRect.height) });
+  });
+
+  if(!best) return;
+
+  // Apply delta to group position
+  if(best.type==='x') deviceGroup.x(deviceGroup.x() + best.value);
+  if(best.type==='y') deviceGroup.y(deviceGroup.y() + best.value);
+
+  if(snapEnabled){
+    deviceGroup.position({ x:snapPx(deviceGroup.x()), y:snapPx(deviceGroup.y()) });
+  }
+  constrainToRoom(deviceGroup);
+
+  function chooseBest(curr, cand){
+    if(!curr) return cand;
+    return Math.abs(cand.value) < Math.abs(curr.value) ? cand : curr;
+  }
+}
+
+/* ========== 7A v2 collision/clearance + distance lines (devices only) ========== */
+let collisionPairs=[]; // {aId,bId,type,gapMm,needMm,seg}
+let conflictIds=new Set();
+let collisionTimer=null;
+
+function scheduleCollisionCheck(){
+  clearTimeout(collisionTimer);
+  collisionTimer=setTimeout(recomputeCollisions, 80);
+}
+function rectsOverlap(a,b){
+  return !(a.x+a.width<=b.x || b.x+b.width<=a.x || a.y+a.height<=b.y || b.y+b.height<=a.y);
+}
+function getClosestSegmentBetweenRects(a,b){
+  const ax1=a.x, ax2=a.x+a.width, ay1=a.y, ay2=a.y+a.height;
+  const bx1=b.x, bx2=b.x+b.width, by1=b.y, by2=b.y+b.height;
+
+  function clampPointToRect(px,py, r){
+    const rx1=r.x, rx2=r.x+r.width, ry1=r.y, ry2=r.y+r.height;
+    return { x: clamp(px, rx1, rx2), y: clamp(py, ry1, ry2) };
+  }
+
+  const acx=(ax1+ax2)/2, acy=(ay1+ay2)/2;
+  const bcx=(bx1+bx2)/2, bcy=(by1+by2)/2;
+
+  let best = {
+    ax: clampPointToRect(bcx, bcy, a).x,
+    ay: clampPointToRect(bcx, bcy, a).y,
+    bx: clampPointToRect(acx, acy, b).x,
+    by: clampPointToRect(acx, acy, b).y
+  };
+
+  function dist2(s){ const dx=s.ax-s.bx, dy=s.ay-s.by; return dx*dx+dy*dy; }
+  let bestD2=dist2(best);
+
+  if(ax2 < bx1){
+    const y = clamp(acy, by1, by2);
+    const s = { ax: ax2, ay: clamp(y, ay1, ay2), bx: bx1, by: y };
+    const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
+  } else if(bx2 < ax1){
+    const y = clamp(bcy, ay1, ay2);
+    const s = { ax: ax1, ay: y, bx: bx2, by: clamp(y, by1, by2) };
+    const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
+  }
+
+  if(ay2 < by1){
+    const x = clamp(acx, bx1, bx2);
+    const s = { ax: clamp(x, ax1, ax2), ay: ay2, bx: x, by: by1 };
+    const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
+  } else if(by2 < ay1){
+    const x = clamp(bcx, ax1, ax2);
+    const s = { ax: x, ay: ay1, bx: clamp(x, bx1, bx2), by: by2 };
+    const d2=dist2(s); if(d2<bestD2){ best=s; bestD2=d2; }
+  }
+
+  return best;
+}
+
+function recomputeCollisions(){
+  initWarningLayer();
+  warningLinesGroup.destroyChildren();
+
+  const devices=layer.getChildren().filter(n=>n instanceof Konva.Group && n.name()==='device');
+  collisionPairs=[];
+  conflictIds=new Set();
+
+  for(let i=0;i<devices.length;i++){
+    for(let j=i+1;j<devices.length;j++){
+      const A=devices[i], B=devices[j];
+      const ra=A.getClientRect();
+      const rb=B.getClientRect();
+
+      if(rectsOverlap(ra, rb)){
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'overlap', gapMm:0, needMm:0, seg:null });
+        conflictIds.add(A._id); conflictIds.add(B._id);
+        continue;
+      }
+
+      const ca=A.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+      const cb=B.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+      const needMm=Math.max(ca, cb);
+
+      const seg=getClosestSegmentBetweenRects(ra, rb);
+      const dx=seg.ax-seg.bx, dy=seg.ay-seg.by;
+      const gapPx=Math.sqrt(dx*dx+dy*dy);
+      const gapMm=pxToMm(gapPx);
+
+      if(gapMm < needMm){
+        collisionPairs.push({ aId:A._id, bId:B._id, type:'clearance', gapMm, needMm, seg });
+        conflictIds.add(A._id); conflictIds.add(B._id);
+
+        const line=new Konva.Line({ points:[seg.ax,seg.ay,seg.bx,seg.by], stroke:'rgba(245,158,11,0.95)', strokeWidth:2, dash:[8,6] });
+        const midx=(seg.ax+seg.bx)/2, midy=(seg.ay+seg.by)/2;
+        const text=new Konva.Text({ x:midx+6, y:midy+6, text:`${gapMm}mm / 需≥${needMm}mm`, fontSize:12, fill:'#b45309' });
+        const bg=new Konva.Rect({ x:text.x()-4, y:text.y()-2, width:text.width()+8, height:text.height()+4, fill:'rgba(255,237,213,0.75)', stroke:'rgba(245,158,11,0.65)', strokeWidth:1, cornerRadius:6 });
+        warningLinesGroup.add(line,bg,text);
+      }
+    }
+  }
+
+  devices.forEach(updateUI);
+  layer.draw();
+  warningLayer.draw();
+  renderInspector();
+  if(is3DVisible()) sync3DConflictHighlight();
+}
+
+/* ========== Inspector ========== */
+function renderInspector(){
   const c=document.getElementById('inspector-content');
 
-  if(mode==='room'){
+  if(selectedNodes.length===0){
     c.innerHTML=`
-      <div class="chip">矩形房間設定</div>
-      <div class="prop-grid" style="margin-top:12px;">
-        <div class="prop-group"><label class="prop-label">寬度 (mm)</label><input type="number" value="${ROOM.widthMm}" oninput="updateRoom('widthMm', this.value)"></div>
-        <div class="prop-group"><label class="prop-label">長度 (mm)</label><input type="number" value="${ROOM.depthMm}" oninput="updateRoom('depthMm', this.value)"></div>
-        <div class="prop-group"><label class="prop-label">牆高 (mm)</label><input type="number" value="${ROOM.wallHeightMm}" oninput="updateRoom('wallHeightMm', this.value)"></div>
-        <div class="prop-group"><label class="prop-label">牆厚 (mm)</label><input type="number" value="${ROOM.wallThicknessMm}" disabled></div>
+      <div class="chip">未選取</div>
+      <div style="margin-top:10px; color:#94a3b8; font-size:12px;">
+        衝突：<b>${collisionPairs.length}</b> 組（紅=重疊；橘=距離不足）
       </div>
-      <div class="hint" style="margin-top:10px;">3D 會生成地板與四面牆。</div>
     `;
     return;
   }
 
-  if(selectedNodes.length===0){
-    c.innerHTML=`<div class="chip">請選擇物件</div>
-      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組（紅=重疊；橘=距離不足）</div>`;
-    return;
-  }
-
   if(selectedNodes.length>1){
-    c.innerHTML=`<div class="chip">已選取：${selectedNodes.length} 個物件</div>
-      <div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
-      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取</button>`;
+    c.innerHTML=`
+      <div class="chip">已選取：${selectedNodes.length} 個</div>
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取</button>
+    `;
     return;
   }
 
@@ -647,42 +971,64 @@ function renderInspector(mode){
   const r=n.findOne('.main-rect');
   const wPx=r.width()*n.scaleX();
   const dPx=r.height()*n.scaleY();
-  const hPx=n.attrs.customData?.height3dPx||0;
-  const key=n.attrs.customData?.deviceKey||n.name();
-  const clearance=n.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+  const kind=n.name();
 
-  c.innerHTML=`
-    <div class="chip">已選取：1 個物件</div>
-    <div class="hint" style="margin-top:10px;">
-      類別：<b>${escapeHtml(key)}</b><br/>
-      尺寸：<b>${fmtMm(pxToMm(wPx))}��${fmtMm(pxToMm(dPx))}</b><br/>
-      高度：<b>${fmtCm(pxToMm(hPx))}</b>
-    </div>
-    <div class="prop-group" style="margin-top:12px;">
-      <label class="prop-label">安全距離 (mm)</label>
-      <input type="number" value="${clearance}" oninput="updateClearance(this.value)">
-    </div>
-    <div class="hint">衝突：<b>${collisionPairs.length}</b> 組</div>
-    <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
-  `;
+  if(kind==='device'){
+    const hPx=n.attrs.customData?.height3dPx||0;
+    const key=n.attrs.customData?.deviceKey||'device';
+    const clearance=n.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT;
+
+    c.innerHTML=`
+      <div class="chip">設備：${escapeHtml(key)}</div>
+      <div style="margin-top:10px; color:#94a3b8; font-size:12px; line-height:1.4;">
+        尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
+        高度：<b>${fmtCm(pxToMm(hPx))}</b>
+      </div>
+      <div class="prop-group" style="margin-top:12px;">
+        <label class="prop-label">安全距離 (mm)</label>
+        <input type="number" value="${clearance}" oninput="updateClearance(this.value)">
+      </div>
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
+    `;
+    return;
+  }
+
+  if(kind==='zone'){
+    c.innerHTML=`
+      <div class="chip">區域</div>
+      <div style="margin-top:10px; color:#94a3b8; font-size:12px;">
+        尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b>
+      </div>
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
+    `;
+    return;
+  }
+
+  if(kind==='wall'){
+    const wallKey=n.attrs.customData?.deviceKey||'wall';
+    const th=n.attrs.customData?.wallThicknessMm||0;
+    const wh=n.attrs.customData?.wallHeightMm||0;
+    c.innerHTML=`
+      <div class="chip">牆壁：${escapeHtml(wallKey)}</div>
+      <div style="margin-top:10px; color:#94a3b8; font-size:12px; line-height:1.4;">
+        平面：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
+        厚度：<b>${th}mm</b> / 牆高：<b>${wh}mm</b>
+      </div>
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
+    `;
+    return;
+  }
 }
 
-function updateRoom(p,v){
-  ROOM[p]=Math.max(1000, safeInt(v, ROOM[p]));
-  drawGrid();
-  drawRoomBoundary2D();
-  scheduleAutosave();
-  scheduleCollisionCheck();
-  if(is3DVisible()) update3D();
-}
 function updateClearance(v){
   if(selectedNodes.length!==1) return;
-  selectedNodes[0].attrs.customData.clearanceMm = Math.max(0, safeInt(v, SAFETY_CLEARANCE_MM_DEFAULT));
+  const mm=Math.max(0, safeInt(v, SAFETY_CLEARANCE_MM_DEFAULT));
+  selectedNodes[0].attrs.customData.clearanceMm=mm;
   scheduleAutosave();
   scheduleCollisionCheck();
 }
 
-/* delete/export */
+/* ========== Delete / Export ========== */
 function deleteSelected(){
   if(selectedNodes.length===0) return;
   selectedNodes.forEach(n=>n.destroy());
@@ -692,6 +1038,7 @@ function deleteSelected(){
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
+
 function exportImg(format){
   tr.nodes([]);
   layer.draw();
@@ -707,9 +1054,10 @@ function exportImg(format){
   }
 }
 
-/* save/load */
+/* ========== Save/Load JSON ========== */
 const STORAGE_KEY='labcad_design_v1';
 let autosaveTimer=null;
+
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
   autosaveTimer=setTimeout(()=>{
@@ -717,12 +1065,14 @@ function scheduleAutosave(){
     catch(err){ console.error(err); toast('自動保存失敗'); }
   }, 150);
 }
+
 function serializeNode(group){
   const r=group.findOne('.main-rect');
   const title=group.findOne('.title-text');
   const wPx=r.width()*group.scaleX();
   const dPx=r.height()*group.scaleY();
   const hPx=group.attrs.customData?.height3dPx||0;
+
   return {
     type: group.name(),
     key: group.attrs.customData?.deviceKey || group.name(),
@@ -737,18 +1087,20 @@ function serializeNode(group){
     dash: r.dash(),
     hMm: pxToMm(hPx),
     clearanceMm: group.attrs.customData?.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT,
-    accent: group.attrs.customData?.accent ?? '#60a5fa'
+    accent: group.attrs.customData?.accent ?? '#60a5fa',
+    wallThicknessMm: group.attrs.customData?.wallThicknessMm ?? 0,
+    wallHeightMm: group.attrs.customData?.wallHeightMm ?? 0,
+    wallOrientation: group.attrs.customData?.wallOrientation ?? ''
   };
 }
 function getDesignJSON(){
-  const nodes=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).map(serializeNode);
+  const nodes=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall')).map(serializeNode);
   return {
-    version: 81,
+    version: 90,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
     room: { ...ROOM },
     ui: { gridVisible, snapEnabled },
-    safety: { defaultClearanceMm: SAFETY_CLEARANCE_MM_DEFAULT },
     nodes
   };
 }
@@ -775,8 +1127,9 @@ document.getElementById('import-json-input').addEventListener('change',(e)=>{
   };
   reader.readAsText(file);
 });
+
 function resetDesign(clearLS=false){
-  layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g=>g.destroy());
+  layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall')).forEach(g=>g.destroy());
   selectionRect.visible(false);
   clearSelection();
   layer.draw();
@@ -786,23 +1139,21 @@ function resetDesign(clearLS=false){
   if(warningLayer) warningLayer.draw();
   if(is3DVisible()) update3D();
 }
+
 function loadDesignFromObject(design){
   resetDesign(false);
-  if(design?.room){
-    ROOM.widthMm = design.room.widthMm ?? ROOM.widthMm;
-    ROOM.depthMm = design.room.depthMm ?? ROOM.depthMm;
-    ROOM.wallHeightMm = design.room.wallHeightMm ?? ROOM.wallHeightMm;
-    ROOM.wallThicknessMm = design.room.wallThicknessMm ?? ROOM.wallThicknessMm;
-  }
+
   if(design?.ui){
     gridVisible = design.ui.gridVisible ?? gridVisible;
     snapEnabled = design.ui.snapEnabled ?? snapEnabled;
   }
+
   (design?.nodes||[]).forEach(n=>{
-    const type=n.type==='zone'?'zone':'device';
-    const stroke=n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
-    const dash=Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
-    const fill=n.fill || (type==='zone' ? 'rgba(59,130,246,0.10)' : 'rgba(148,163,184,0.12)');
+    const type = (n.type==='wall') ? 'wall' : (n.type==='zone' ? 'zone' : 'device');
+    const stroke = n.stroke || DEFAULT_STROKE_BY_KIND[type] || '#1e293b';
+    const dash = Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
+    const fill = n.fill || (type==='zone' ? 'rgba(59,130,246,0.10)' : (type==='wall' ? 'rgba(251,146,60,0.15)' : 'rgba(148,163,184,0.10)'));
+
     const group=new Konva.Group({
       x: mmToPx(Number(n.xMm)||0),
       y: mmToPx(Number(n.yMm)||0),
@@ -812,16 +1163,22 @@ function loadDesignFromObject(design){
         height3dPx: mmToPx(Number(n.hMm)||0),
         deviceKey: n.key || type,
         clearanceMm: Number(n.clearanceMm ?? SAFETY_CLEARANCE_MM_DEFAULT),
-        accent: n.accent ?? '#60a5fa'
+        accent: n.accent ?? '#60a5fa',
+        wallThicknessMm: Number(n.wallThicknessMm||0),
+        wallHeightMm: Number(n.wallHeightMm||0),
+        wallOrientation: n.wallOrientation || ''
       }
     });
+
     const rect=new Konva.Rect({
-      width: mmToPx(Math.max(100, Number(n.wMm)||1000)),
-      height: mmToPx(Math.max(100, Number(n.dMm)||1000)),
-      fill, stroke, name:'main-rect', dash
+      width: mmToPx(Math.max(10, Number(n.wMm)||100)),
+      height: mmToPx(Math.max(10, Number(n.dMm)||100)),
+      fill, stroke, name:'main-rect', dash, strokeWidth: (type==='wall'?2:1)
     });
-    const title=new Konva.Text({ text:n.name||'', fontSize:14, fill:stroke, padding:8, name:'title-text' });
+
+    const title=new Konva.Text({ text:n.name||'', fontSize:13, fill:stroke, padding:8, name:'title-text' });
     const dim=new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
+
     group.rotation(Number(n.rot)||0);
     group.add(rect,title,dim);
     updateUI(group);
@@ -829,6 +1186,7 @@ function loadDesignFromObject(design){
     group.on('dragmove',()=>{
       if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
       constrainToRoom(group);
+      if(type==='device') maybeSnapDeviceToWalls(group);
       updateUI(group);
       scheduleAutosave();
       scheduleCollisionCheck();
@@ -838,6 +1196,7 @@ function loadDesignFromObject(design){
     group.on('transformend',()=>{
       if(snapEnabled) normalizeGroupToGrid(group);
       constrainToRoom(group);
+      if(type==='device') maybeSnapDeviceToWalls(group);
       scheduleAutosave();
       scheduleCollisionCheck();
       if(is3DVisible()) update3D();
@@ -857,6 +1216,7 @@ function loadDesignFromObject(design){
   scheduleCollisionCheck();
   if(is3DVisible()) update3D();
 }
+
 function tryLoadFromLocalStorage(){
   const raw=localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
@@ -864,31 +1224,31 @@ function tryLoadFromLocalStorage(){
   catch(err){ console.warn(err); }
 }
 
-/* ===== 3D rounded geometry (approx) ===== */
+/* ========== 3D rounded geometry (approx) ========== */
 function createRoundedRectShape(w, h, r){
-  const x = -w/2, y = -h/2;
-  const shape = new THREE.Shape();
-  const rr = Math.max(0, Math.min(r, Math.min(w,h)/2));
-  shape.moveTo(x + rr, y);
-  shape.lineTo(x + w - rr, y);
-  shape.quadraticCurveTo(x + w, y, x + w, y + rr);
-  shape.lineTo(x + w, y + h - rr);
-  shape.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
-  shape.lineTo(x + rr, y + h);
-  shape.quadraticCurveTo(x, y + h, x, y + h - rr);
-  shape.lineTo(x, y + rr);
-  shape.quadraticCurveTo(x, y, x + rr, y);
+  const x=-w/2, y=-h/2;
+  const shape=new THREE.Shape();
+  const rr=Math.max(0, Math.min(r, Math.min(w,h)/2));
+  shape.moveTo(x+rr,y);
+  shape.lineTo(x+w-rr,y);
+  shape.quadraticCurveTo(x+w,y,x+w,y+rr);
+  shape.lineTo(x+w,y+h-rr);
+  shape.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
+  shape.lineTo(x+rr,y+h);
+  shape.quadraticCurveTo(x,y+h,x,y+h-rr);
+  shape.lineTo(x,y+rr);
+  shape.quadraticCurveTo(x,y,x+rr,y);
   return shape;
 }
-function makeRoundedBoxGeo(w, h, d, radius, smoothSteps=5){
-  const shape = createRoundedRectShape(w, h, radius);
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: d, bevelEnabled:false, curveSegments: smoothSteps });
-  geo.translate(0, 0, -d/2);
+function makeRoundedBoxGeo(w,h,d,radius,smoothSteps=5){
+  const shape=createRoundedRectShape(w,h,radius);
+  const geo=new THREE.ExtrudeGeometry(shape,{ depth:d, bevelEnabled:false, curveSegments:smoothSteps });
+  geo.translate(0,0,-d/2);
   geo.computeVertexNormals();
   return geo;
 }
 
-/* unified materials like screenshot style */
+/* materials */
 const MAT = {
   body: new THREE.MeshStandardMaterial({ color:0xf1f5f9, roughness:0.85, metalness:0.02 }),
   body2: new THREE.MeshStandardMaterial({ color:0xe5e7eb, roughness:0.85, metalness:0.02 }),
@@ -897,241 +1257,193 @@ const MAT = {
   metal: new THREE.MeshStandardMaterial({ color:0xcbd5e1, roughness:0.28, metalness:0.75 }),
   glass: new THREE.MeshStandardMaterial({ color:0x93c5fd, transparent:true, opacity:0.18, roughness:0.12, metalness:0.0 }),
   panelBlue: (function(){
-    const m = new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.5, metalness:0.05 });
-    m.emissive = new THREE.Color(0x60a5fa);
-    m.emissiveIntensity = 0.85;
+    const m=new THREE.MeshStandardMaterial({ color:0x0b1220, roughness:0.5, metalness:0.05 });
+    m.emissive=new THREE.Color(0x60a5fa);
+    m.emissiveIntensity=0.85;
     return m;
   })()
 };
-
-function makeAccentMat(hex){
-  // non-emissive accent stripe
-  return new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), roughness:0.55, metalness:0.08 });
-}
-
-function addAccentStripe(root, x,y,z, w,h, accentHex){
-  const geo = makeRoundedBoxGeo(w,h,6, Math.min(6,w*0.25), 3);
-  const mesh = new THREE.Mesh(geo, makeAccentMat(accentHex));
-  mesh.position.set(x,y,z);
-  mesh.castShadow = false;
-  root.add(mesh);
-}
-
-function addDoorPanel(root, x,y,z, w,h, radius){
-  const geo = makeRoundedBoxGeo(w,h,6, Math.min(10,radius), 4);
-  const mesh = new THREE.Mesh(geo, MAT.body2);
+function makeAccentMat(hex){ return new THREE.MeshStandardMaterial({ color:new THREE.Color(hex), roughness:0.55, metalness:0.08 }); }
+function addAccentStripe(root,x,y,z,w,h,accentHex){
+  const geo=makeRoundedBoxGeo(w,h,6,Math.min(6,w*0.25),3);
+  const mesh=new THREE.Mesh(geo, makeAccentMat(accentHex));
   mesh.position.set(x,y,z);
   root.add(mesh);
 }
-
-function addHandle(root, x,y,z, len){
-  const geo = new THREE.CylinderGeometry(7,7,len,12);
-  const mesh = new THREE.Mesh(geo, MAT.metal);
+function addDoorPanel(root,x,y,z,w,h,radius){
+  const geo=makeRoundedBoxGeo(w,h,6,Math.min(10,radius),4);
+  const mesh=new THREE.Mesh(geo, MAT.body2);
   mesh.position.set(x,y,z);
-  mesh.castShadow = true;
+  root.add(mesh);
+}
+function addHandle(root,x,y,z,len){
+  const geo=new THREE.CylinderGeometry(7,7,len,12);
+  const mesh=new THREE.Mesh(geo, MAT.metal);
+  mesh.position.set(x,y,z);
+  mesh.castShadow=true;
+  root.add(mesh);
+}
+function addPanel(root,x,y,z,w,h){
+  const geo=makeRoundedBoxGeo(w,h,10,Math.min(8,w*0.08),3);
+  const mesh=new THREE.Mesh(geo, MAT.panelBlue);
+  mesh.position.set(x,y,z);
   root.add(mesh);
 }
 
-function addPanel(root, x,y,z, w,h){
-  const geo = makeRoundedBoxGeo(w,h,10, Math.min(8,w*0.08), 3);
-  const mesh = new THREE.Mesh(geo, MAT.panelBlue);
-  mesh.position.set(x,y,z);
-  mesh.castShadow = false;
-  root.add(mesh);
-}
-
+/* prefabs */
 function buildBench3D(w,d,h){
   const root=new THREE.Group();
-  const topGeo=makeRoundedBoxGeo(w,44,d,16,5);
-  const top=new THREE.Mesh(topGeo, MAT.body);
+  const top=new THREE.Mesh(makeRoundedBoxGeo(w,44,d,16,5), MAT.body);
   top.position.set(0,h-22,0);
   root.add(top);
 
   const legH=h-70;
   const legGeo=makeRoundedBoxGeo(22,legH,22,6,3);
-  [[-w/2+22, legH/2, -d/2+22],[w/2-22, legH/2, -d/2+22],[-w/2+22, legH/2, d/2-22],[w/2-22, legH/2, d/2-22]].forEach(([x,y,z])=>{
-    const leg=new THREE.Mesh(legGeo, MAT.base);
-    leg.position.set(x,y,z);
-    root.add(leg);
-  });
-
-  // small corner pads (like screws)
-  const padGeo = new THREE.CylinderGeometry(4,4,4,10);
-  for(const [x,z] of [[-w/2+14,-d/2+14],[w/2-14,-d/2+14],[-w/2+14,d/2-14],[w/2-14,d/2-14]]){
-    const pad=new THREE.Mesh(padGeo, MAT.base2);
-    pad.position.set(x,h-4,z);
-    root.add(pad);
-  }
+  [[-w/2+22, legH/2, -d/2+22],[w/2-22, legH/2, -d/2+22],[-w/2+22, legH/2, d/2-22],[w/2-22, legH/2, d/2-22]]
+    .forEach(([x,y,z])=>{ const leg=new THREE.Mesh(legGeo, MAT.base); leg.position.set(x,y,z); root.add(leg); });
 
   return { root, pickHeight:h };
 }
-
 function buildFridgeLike3D(w,d,h, accentHex){
   const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
 
-  // dark base plinth
-  const plinthGeo = makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3);
-  const plinth = new THREE.Mesh(plinthGeo, MAT.base);
-  plinth.position.set(0, 20, 0);
+  const plinth=new THREE.Mesh(makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3), MAT.base);
+  plinth.position.set(0,20,0);
   root.add(plinth);
 
-  // main body
-  const bodyGeo=makeRoundedBoxGeo(w,h,d,radius,6);
-  const body=new THREE.Mesh(bodyGeo, MAT.body);
-  body.position.set(0,h/2 + 40,0);
+  const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
+  body.position.set(0,h/2+40,0);
   root.add(body);
 
-  // door panel (style 1: full flat panel)
-  addDoorPanel(root, 0, h/2 + 40, d/2 + 4, w*0.9, h*0.88, radius);
+  addDoorPanel(root,0,h/2+40,d/2+4,w*0.9,h*0.88,radius);
+  addHandle(root,w/2-36,h/2+40,d/2+16,h*0.45);
+  addPanel(root,0,h+40-120,d/2+14,w*0.5,74);
+  addAccentStripe(root,w*0.22,h+40-170,d/2+16,w*0.35,20,accentHex);
 
-  // handle
-  addHandle(root, w/2 - 36, h/2 + 40, d/2 + 16, h*0.45);
-
-  // top control panel
-  addPanel(root, 0, h + 40 - 120, d/2 + 14, w*0.5, 74);
-
-  // accent stripe (like image3 green stripe)
-  addAccentStripe(root, w*0.22, h + 40 - 170, d/2 + 16, w*0.35, 20, accentHex);
-
-  return { root, pickHeight: h + 40 };
+  return { root, pickHeight:h+40 };
 }
-
-function buildIncubator3D(w,d,h, accentHex){
-  const root = new THREE.Group();
+function buildIncubator3D(w,d,h,accentHex){
+  const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
 
-  const baseGeo = makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3);
-  const base = new THREE.Mesh(baseGeo, MAT.base);
-  base.position.set(0, 20, 0);
+  const base=new THREE.Mesh(makeRoundedBoxGeo(w*0.96, 40, d*0.96, 12, 3), MAT.base);
+  base.position.set(0,20,0);
   root.add(base);
 
-  const bodyGeo=makeRoundedBoxGeo(w,h,d,radius,6);
-  const body=new THREE.Mesh(bodyGeo, MAT.body);
-  body.position.set(0,h/2 + 40,0);
+  const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
+  body.position.set(0,h/2+40,0);
   root.add(body);
 
-  // glass door overlay
-  const glassGeo=makeRoundedBoxGeo(w*0.82, h*0.74, 8, Math.min(18,radius), 5);
-  const glass=new THREE.Mesh(glassGeo, MAT.glass);
-  glass.position.set(0, h/2 + 40, d/2 + 10);
+  const glass=new THREE.Mesh(makeRoundedBoxGeo(w*0.82,h*0.74,8,Math.min(18,radius),5), MAT.glass);
+  glass.position.set(0,h/2+40,d/2+10);
   root.add(glass);
 
-  addPanel(root, 0, h + 40 - 120, d/2 + 14, w*0.5, 74);
-  addAccentStripe(root, w*0.22, h + 40 - 170, d/2 + 16, w*0.35, 20, accentHex);
+  addPanel(root,0,h+40-120,d/2+14,w*0.5,74);
+  addAccentStripe(root,w*0.22,h+40-170,d/2+16,w*0.35,20,accentHex);
+  addHandle(root,w/2-36,h/2+40,d/2+16,h*0.45);
 
-  addHandle(root, w/2 - 36, h/2 + 40, d/2 + 16, h*0.45);
-
-  return { root, pickHeight: h + 40 };
+  return { root, pickHeight:h+40 };
 }
-
-function buildCentrifuge3D(w,d,h, accentHex){
+function buildCentrifuge3D(w,d,h,accentHex){
   const root=new THREE.Group();
-  // dark base
-  const baseH = h*0.55;
-  const baseGeo=makeRoundedBoxGeo(w, baseH, d, Math.min(18,Math.min(w,d)*0.08), 5);
-  const base=new THREE.Mesh(baseGeo, MAT.base);
-  base.position.set(0, baseH/2, 0);
+  const baseH=h*0.55;
+
+  const base=new THREE.Mesh(makeRoundedBoxGeo(w,baseH,d,Math.min(18,Math.min(w,d)*0.08),5), MAT.base);
+  base.position.set(0,baseH/2,0);
   root.add(base);
 
-  // white lid
-  const lid = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 28), MAT.body2);
-  lid.position.set(0, baseH + (h*0.14), 0);
+  const lid=new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.38,Math.min(w,d)*0.38,h*0.28,28), MAT.body2);
+  lid.position.set(0,baseH+h*0.14,0);
   root.add(lid);
 
-  // front panel + accent
-  addPanel(root, w*0.18, baseH*0.65, d/2 + 14, w*0.42, h*0.22);
-  addAccentStripe(root, -w*0.15, baseH*0.55, d/2 + 14, w*0.28, 18, accentHex);
+  addPanel(root,w*0.18,baseH*0.65,d/2+14,w*0.42,h*0.22);
+  addAccentStripe(root,-w*0.15,baseH*0.55,d/2+14,w*0.28,18,accentHex);
 
-  return { root, pickHeight: h };
+  return { root, pickHeight:h };
 }
-
-function buildSink3D(w,d,h, accentHex){
+function buildSink3D(w,d,h,accentHex){
   const root=new THREE.Group();
-  // cabinet base (dark-ish)
-  const cabGeo=makeRoundedBoxGeo(w*0.92, h-60, d*0.92, 16, 5);
-  const cab=new THREE.Mesh(cabGeo, MAT.body2);
-  cab.position.set(0, (h-60)/2, 0);
+
+  const cab=new THREE.Mesh(makeRoundedBoxGeo(w*0.92,h-60,d*0.92,16,5), MAT.body2);
+  cab.position.set(0,(h-60)/2,0);
   root.add(cab);
 
-  // countertop
-  const topGeo=makeRoundedBoxGeo(w, 44, d, 16, 6);
-  const top=new THREE.Mesh(topGeo, MAT.body);
-  top.position.set(0, h - 22, 0);
+  const top=new THREE.Mesh(makeRoundedBoxGeo(w,44,d,16,6), MAT.body);
+  top.position.set(0,h-22,0);
   root.add(top);
 
-  // basin inset
-  const basinGeo=makeRoundedBoxGeo(w*0.55, 26, d*0.45, 14, 5);
-  const basin=new THREE.Mesh(basinGeo, MAT.base2);
-  basin.position.set(-w*0.08, h - 30, 0);
+  const basin=new THREE.Mesh(makeRoundedBoxGeo(w*0.55,26,d*0.45,14,5), MAT.base2);
+  basin.position.set(-w*0.08,h-30,0);
   root.add(basin);
 
-  // faucet
   const post=new THREE.Mesh(new THREE.CylinderGeometry(10,10,120,14), MAT.metal);
-  post.position.set(w*0.2, h + 30, 0);
+  post.position.set(w*0.2,h+30,0);
   root.add(post);
 
   const spout=new THREE.Mesh(new THREE.CylinderGeometry(8,8,120,14), MAT.metal);
-  spout.rotation.z = Math.PI/2;
-  spout.position.set(w*0.2 + 55, h + 70, 0);
+  spout.rotation.z=Math.PI/2;
+  spout.position.set(w*0.2+55,h+70,0);
   root.add(spout);
 
-  // cabinet handle + accent stripe
-  addHandle(root, w*0.35, (h-60)/2, d/2 + 14, (h-60)*0.35);
-  addAccentStripe(root, -w*0.18, (h-60)/2, d/2 + 14, w*0.28, 18, accentHex);
+  addHandle(root,w*0.35,(h-60)/2,d/2+14,(h-60)*0.35);
+  addAccentStripe(root,-w*0.18,(h-60)/2,d/2+14,w*0.28,18,accentHex);
 
-  return { root, pickHeight: h };
+  return { root, pickHeight:h };
 }
-
-function buildHood3D(w,d,h, accentHex){
+function buildHood3D(w,d,h,accentHex){
   const root=new THREE.Group();
   const radius=Math.min(22, Math.min(w,d)*0.08);
 
-  // base plinth
-  const baseGeo=makeRoundedBoxGeo(w, 46, d, 14, 5);
-  const base=new THREE.Mesh(baseGeo, MAT.base);
-  base.position.set(0, 23, 0);
+  const base=new THREE.Mesh(makeRoundedBoxGeo(w,46,d,14,5), MAT.base);
+  base.position.set(0,23,0);
   root.add(base);
 
-  // body
-  const bodyGeo=makeRoundedBoxGeo(w, h, d, radius, 6);
-  const body=new THREE.Mesh(bodyGeo, MAT.body);
-  body.position.set(0, h/2 + 46, 0);
+  const body=new THREE.Mesh(makeRoundedBoxGeo(w,h,d,radius,6), MAT.body);
+  body.position.set(0,h/2+46,0);
   root.add(body);
 
-  // front frame (slightly darker)
-  const frameGeo=makeRoundedBoxGeo(w*0.92, h*0.6, 14, 12, 5);
-  const frame=new THREE.Mesh(frameGeo, MAT.body2);
-  frame.position.set(0, h*0.58, d/2 + 6);
+  const frame=new THREE.Mesh(makeRoundedBoxGeo(w*0.92,h*0.6,14,12,5), MAT.body2);
+  frame.position.set(0,h*0.58,d/2+6);
   root.add(frame);
 
-  // glass
-  const glassGeo=makeRoundedBoxGeo(w*0.86, h*0.52, 10, 12, 5);
-  const glass=new THREE.Mesh(glassGeo, MAT.glass);
-  glass.position.set(0, h*0.58, d/2 + 10);
+  const glass=new THREE.Mesh(makeRoundedBoxGeo(w*0.86,h*0.52,10,12,5), MAT.glass);
+  glass.position.set(0,h*0.58,d/2+10);
   root.add(glass);
 
-  // panel + accent
-  addPanel(root, 0, h + 46 - 140, d/2 + 16, w*0.6, 84);
-  addAccentStripe(root, w*0.22, h + 46 - 190, d/2 + 16, w*0.35, 20, accentHex);
+  addPanel(root,0,h+46-140,d/2+16,w*0.6,84);
+  addAccentStripe(root,w*0.22,h+46-190,d/2+16,w*0.35,20,accentHex);
 
-  return { root, pickHeight: h + 46 };
+  return { root, pickHeight:h+46 };
 }
-
-function buildPrefab3D(key,w,d,h, accentHex){
+function buildWall3D(wPx,dPx, wallHpx){
+  const root=new THREE.Group();
+  // thickness appearance: make it a solid wall box
+  const geo=new THREE.BoxGeometry(wPx, wallHpx, dPx);
+  const mat=new THREE.MeshStandardMaterial({ color:0x334155, roughness:0.92, metalness:0.05 });
+  const mesh=new THREE.Mesh(geo, mat);
+  mesh.position.set(0, wallHpx/2, 0);
+  root.add(mesh);
+  return { root, pickHeight: wallHpx };
+}
+function buildPrefab3D(key, wPx, dPx, hPx, accentHex, kind, customData){
+  if(kind==='wall'){
+    const wallHpx = mmToPx(customData.wallHeightMm || ROOM.wallHeightMm);
+    return buildWall3D(wPx, dPx, wallHpx);
+  }
   switch(key){
-    case 'bench': return buildBench3D(w,d,mmToPx(800));
-    case 'fridge': return buildFridgeLike3D(w,d,h,accentHex);
-    case 'ultra_low_freezer': return buildFridgeLike3D(w,d,h,accentHex);
-    case 'incubator': return buildIncubator3D(w,d,h,accentHex);
-    case 'centrifuge': return buildCentrifuge3D(w,d,h,accentHex);
-    case 'sink': return buildSink3D(w,d,mmToPx(900),accentHex);
-    case 'hood': return buildHood3D(w,d,h,accentHex);
-    default: return buildFridgeLike3D(w,d,h,accentHex);
+    case 'bench': return buildBench3D(wPx,dPx,mmToPx(800));
+    case 'fridge': return buildFridgeLike3D(wPx,dPx,hPx,accentHex);
+    case 'ultra_low_freezer': return buildFridgeLike3D(wPx,dPx,hPx,accentHex);
+    case 'incubator': return buildIncubator3D(wPx,dPx,hPx,accentHex);
+    case 'centrifuge': return buildCentrifuge3D(wPx,dPx,hPx,accentHex);
+    case 'sink': return buildSink3D(wPx,dPx,mmToPx(900),accentHex);
+    case 'hood': return buildHood3D(wPx,dPx,hPx,accentHex);
+    default: return buildFridgeLike3D(wPx,dPx,hPx,accentHex);
   }
 }
 
-/* ===== 3D engine ===== */
+/* ========== 3D Engine ========== */
 let sc, cam, rend, ctrl;
 let objectsGroup, roomGroup3D, groundMesh, dirLight;
 const threeMap=new Map();
@@ -1216,6 +1528,7 @@ function init3DIfNeeded(){
 
 function buildRoom3D(){
   while(roomGroup3D.children.length) roomGroup3D.remove(roomGroup3D.children[0]);
+
   const w=mmToPx(ROOM.widthMm), d=mmToPx(ROOM.depthMm);
   const wallH=mmToPx(ROOM.wallHeightMm), t=mmToPx(ROOM.wallThicknessMm);
 
@@ -1249,47 +1562,29 @@ function update3D(){
   const cx=rr.x+rr.width/2;
   const cy=rr.y+rr.height/2;
 
-  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
+  const groups=layer.getChildren().filter(n=>n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'||n.name()==='wall'));
+
   groups.forEach(n=>{
-    const r=n.findOne('.main-rect');
-    const wPx=r.width()*n.scaleX();
-    const dPx=r.height()*n.scaleY();
-    const hPx=n.attrs.customData?.height3dPx || mmToPx(800);
+    const rect=n.findOne('.main-rect');
+    const wPx=rect.width()*n.scaleX();
+    const dPx=rect.height()*n.scaleY();
+
+    const kind = n.name();
+    const key=n.attrs.customData?.deviceKey || kind;
+    const accent=n.attrs.customData?.accent || '#60a5fa';
+
+    // height for devices from catalog; walls use wallHeightMm; zone is flat
+    const hPx = (kind==='zone') ? 0 : (kind==='wall' ? mmToPx(n.attrs.customData?.wallHeightMm || ROOM.wallHeightMm) : (n.attrs.customData?.height3dPx || mmToPx(800)));
 
     const x3d=(n.x()+wPx/2)-cx;
     const z3d=(n.y()+dPx/2)-cy;
 
-    const id=n._id;
-    const key=n.attrs.customData?.deviceKey || n.name();
-    const accent=n.attrs.customData?.accent || '#60a5fa';
-
-    if(n.name()==='device'){
-      const prefab=buildPrefab3D(key,wPx,dPx,hPx,accent);
-      const root=prefab.root;
-      root.position.set(x3d,0,z3d);
-      root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
-      root.traverse(obj=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; }});
-
-      const pickGeo=new THREE.BoxGeometry(wPx, prefab.pickHeight || hPx, dPx);
-      const pickMesh=new THREE.Mesh(pickGeo, new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 }));
-      pickMesh.position.set(0,(prefab.pickHeight||hPx)/2,0);
-      pickMesh.userData={ konvaId:id, kind:'device' };
-      root.add(pickMesh);
-
-      const outline=new THREE.LineSegments(new THREE.EdgesGeometry(pickGeo), new THREE.LineBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95 }));
-      outline.position.copy(pickMesh.position);
-      outline.visible=false;
-      root.add(outline);
-
-      objectsGroup.add(root);
-      threeMap.set(id,{ root, pickMesh, outline, key });
-      pickables.push(pickMesh);
-    }else{
+    if(kind==='zone'){
       const mat=new THREE.MeshStandardMaterial({ color:0x3b82f6, transparent:true, opacity:0.18, roughness:0.95, metalness:0.0, side:THREE.DoubleSide });
       const mesh=new THREE.Mesh(new THREE.PlaneGeometry(wPx,dPx), mat);
       mesh.rotation.x=-Math.PI/2;
       mesh.position.set(x3d,1,z3d);
-      mesh.userData={ konvaId:id, kind:'zone' };
+      mesh.userData={ konvaId:n._id, kind:'zone' };
 
       const edges=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color:0x60a5fa, transparent:true, opacity:0.9 }));
       edges.rotation.copy(mesh.rotation);
@@ -1300,9 +1595,31 @@ function update3D(){
       root.add(mesh); root.add(edges);
       objectsGroup.add(root);
 
-      threeMap.set(id,{ root, pickMesh:mesh, outline:edges, key:'zone', zoneMesh:mesh });
+      threeMap.set(n._id,{ root, pickMesh:mesh, outline:edges, key:'zone', zoneMesh:mesh });
       pickables.push(mesh);
+      return;
     }
+
+    const prefab=buildPrefab3D(key,wPx,dPx,hPx,accent,kind,n.attrs.customData||{});
+    const root=prefab.root;
+    root.position.set(x3d,0,z3d);
+    root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
+    root.traverse(obj=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; }});
+
+    const pickGeo=new THREE.BoxGeometry(wPx, prefab.pickHeight || hPx, dPx);
+    const pickMesh=new THREE.Mesh(pickGeo, new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 }));
+    pickMesh.position.set(0,(prefab.pickHeight||hPx)/2,0);
+    pickMesh.userData={ konvaId:n._id, kind:kind };
+    root.add(pickMesh);
+
+    const outline=new THREE.LineSegments(new THREE.EdgesGeometry(pickGeo), new THREE.LineBasicMaterial({ color:0x93c5fd, transparent:true, opacity:0.95 }));
+    outline.position.copy(pickMesh.position);
+    outline.visible=false;
+    root.add(outline);
+
+    objectsGroup.add(root);
+    threeMap.set(n._id,{ root, pickMesh, outline, key, kind });
+    pickables.push(pickMesh);
   });
 
   fitCameraToRoom();
@@ -1328,18 +1645,22 @@ function fitCameraToRoom(){
 function sync3DSelectionHighlight(){
   const sel=new Set(selectedNodes.map(n=>n._id));
   threeMap.forEach((obj,id)=>{
+    const selected=sel.has(id);
     if(obj.zoneMesh){
-      obj.zoneMesh.material.opacity = sel.has(id) ? 0.28 : 0.18;
-      obj.outline.visible = sel.has(id);
+      obj.zoneMesh.material.opacity = selected ? 0.28 : 0.18;
+      obj.outline.visible = selected;
       return;
     }
-    obj.outline.visible = sel.has(id);
+    obj.outline.visible = selected;
   });
 }
 
 function sync3DConflictHighlight(){
   threeMap.forEach((obj,id)=>{
-    if(obj.zoneMesh) return;
+    if(obj.kind !== 'device') {
+      // wall/zone conflict highlight not implemented yet
+      return;
+    }
     const isConflict=conflictIds.has(id);
     if(!obj.outline) return;
     if(!isConflict){
@@ -1359,6 +1680,7 @@ function animate3D(){
     rend.render(sc, cam);
   }
 }
+
 function updateDebug3D(){
   const el=document.getElementById('debug3d');
   if(!el || !is3DVisible()) return;
@@ -1394,25 +1716,29 @@ function getNodeSizeMm(node){
   const r=node.findOne('.main-rect');
   const wPx=r.width()*node.scaleX();
   const dPx=r.height()*node.scaleY();
-  const hPx=node.attrs.customData?.height3dPx||0;
+  const kind=node.name();
+  const hPx = (kind==='wall')
+    ? mmToPx(node.attrs.customData?.wallHeightMm || ROOM.wallHeightMm)
+    : (node.attrs.customData?.height3dPx || 0);
   return { wMm:pxToMm(wPx), dMm:pxToMm(dPx), hMm:pxToMm(hPx) };
 }
+
 function showInfoCardFor(node,pt){
   const card=document.getElementById('info-card');
   const name=node.findOne('.title-text')?.text()||'';
   const key=node.attrs.customData?.deviceKey||node.name();
   const size=getNodeSizeMm(node);
-
   card.innerHTML=`
     <div class="info-title"><div class="info-icon">⟲</div><div style="flex:1;"><div style="font-weight:800;">${escapeHtml(name)}</div></div></div>
-    <div class="info-row"><div class="info-key">類別</div><div>${escapeHtml(key)}</div></div>
+    <div class="info-row"><div class="info-key">類別</div><div>${escapeHtml(node.name())}</div></div>
+    <div class="info-row"><div class="info-key">Key</div><div>${escapeHtml(key)}</div></div>
     <div class="info-row"><div class="info-key">尺寸</div><div>${size.wMm}×${size.dMm}mm</div></div>
-    <div class="info-row"><div class="info-key">擺放高度</div><div>${fmtCm(size.hMm)}</div></div>
+    <div class="info-row"><div class="info-key">高度</div><div>${fmtCm(size.hMm)}</div></div>
   `;
   card.style.display='block';
 
   const vw=window.innerWidth,vh=window.innerHeight;
-  const cw=320,ch=150;
+  const cw=320,ch=170;
   let left=pt.x+14,top=pt.y+14;
   if(left+cw>vw) left=pt.x-cw-14;
   if(top+ch>vh) top=pt.y-ch-14;
@@ -1421,15 +1747,27 @@ function showInfoCardFor(node,pt){
 }
 function hideInfoCard(){ document.getElementById('info-card').style.display='none'; }
 
-/* toggle 3D */
-function toggle3D(){
+/* ========== Toolbar wiring ========== */
+document.getElementById('btn-export-png').onclick=()=>exportImg('png');
+document.getElementById('btn-export-pdf').onclick=()=>exportImg('pdf');
+document.getElementById('btn-delete').onclick=()=>deleteSelected();
+document.getElementById('btn-export-json').onclick=()=>exportDesignJSON();
+document.getElementById('btn-import-json').onclick=()=>triggerImportJSON();
+document.getElementById('btn-reset').onclick=()=>resetDesign(true);
+document.getElementById('btn-grid').onclick=()=>toggleGrid();
+document.getElementById('btn-snap').onclick=()=>toggleSnap();
+
+document.getElementById('toggle-3d').onclick=()=>{
   const btn=document.getElementById('toggle-3d');
   const c2d=document.getElementById('container');
   const c3d=document.getElementById('three-container');
   const debug=document.getElementById('debug3d');
 
-  const opening = (c3d.style.display==='' || c3d.style.display==='none');
+  const opening=(c3d.style.display===''||c3d.style.display==='none');
   if(opening){
+    // when 3D open, exit placement mode to avoid confusion
+    if(placementMode) setPlacementMode(null);
+
     c3d.style.display='block';
     c2d.style.display='none';
     debug.style.display='block';
@@ -1447,28 +1785,11 @@ function toggle3D(){
     debug.style.display='none';
     btn.innerText='查看 3D 預覽';
   }
-}
+};
 
-/* hotkeys */
-window.addEventListener('keydown',(e)=>{
-  const tag=document.activeElement?.tagName?.toLowerCase();
-  const typing=tag==='input'||tag==='textarea';
-  if(e.key==='Escape'){
-    hideInfoCard();
-    clearSelection();
-    layer.draw();
-    sync3DSelectionHighlight();
-    return;
-  }
-  if(!typing && (e.key==='Delete'||e.key==='Backspace')){
-    deleteSelected();
-    e.preventDefault();
-  }
-});
-
-/* resize */
+/* ========== Resize ========== */
 window.addEventListener('resize',()=>{
-  stage.width(window.innerWidth-600);
+  stage.width(window.innerWidth-640);
   stage.height(window.innerHeight);
   drawGrid();
   drawRoomBoundary2D();
@@ -1477,10 +1798,13 @@ window.addEventListener('resize',()=>{
   if(is3DVisible()) resize3D();
 });
 
-/* boot */
-renderDeviceCatalog();
+/* ========== Boot ========== */
+setupTabs();
+renderDevices();
+renderWalls();
 drawGrid();
 drawRoomBoundary2D();
+initWarningLayer();
 renderInspector();
 tryLoadFromLocalStorage();
 scheduleCollisionCheck();
