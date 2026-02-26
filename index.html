@@ -5,9 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LabCAD Web Pro - 實驗室規劃系統</title>
 
+  <!-- Non-module globals (still OK with module script below) -->
   <script src="https://unpkg.com/konva@9/konva.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
 
@@ -71,14 +70,10 @@
       color:#e2e8f0; font-size:12px;
       user-select:none;
     }
-    .toggle{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:8px 10px; border-radius:10px;
-      border:1px solid rgba(148,163,184,.2);
-      background:rgba(15,23,42,.35);
-      margin-top:10px;
+
+    .hint{
+      color:#94a3b8; font-size:12px; line-height:1.35; margin-top:10px;
     }
-    .toggle input{ width:auto; }
 
     /* 3D info card */
     #info-card{
@@ -113,10 +108,6 @@
     }
     .info-row:first-of-type{ border-top:none; }
     .info-key{ color:#94a3b8; }
-
-    .hint{
-      color:#94a3b8; font-size:12px; line-height:1.35; margin-top:10px;
-    }
   </style>
 </head>
 
@@ -127,12 +118,12 @@
 
     <div class="tool-section">
       <div class="tool-section-title">房間</div>
-      <div class="item" onclick="focusRoomSettings()">房間設定（寬/長/牆高）</div>
+      <div class="item" id="room-settings-btn">房間設定（寬/長/牆高）</div>
     </div>
 
     <div class="tool-section">
       <div class="tool-section-title">區域</div>
-      <div class="item" onclick="addZone('新規劃區域')">新增區域</div>
+      <div class="item" id="add-zone-btn">新增區域</div>
     </div>
 
     <div class="tool-section" id="device-catalog">
@@ -141,7 +132,7 @@
     </div>
 
     <div style="margin-top:auto; padding:20px; position:sticky; bottom:0; background:linear-gradient(180deg, rgba(30,41,59,0), rgba(30,41,59,1) 30%);">
-      <button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button>
+      <button class="btn-action" style="background:var(--accent);" id="toggle-3d">查看 3D 預覽</button>
       <div class="hint" style="margin-top:10px;">
         單位：1格=10cm=100mm（格線10px）<br/>
         3D：點選物件可反選到2D（Shift可多選）
@@ -151,21 +142,21 @@
 
   <main class="canvas-area">
     <div class="toolbar" title="工具列">
-      <button class="tool-btn" onclick="exportImg('png')" title="匯出 PNG"><i data-lucide="image"></i></button>
-      <button class="tool-btn" onclick="exportImg('pdf')" title="匯出 PDF"><i data-lucide="file-text"></i></button>
-      <button class="tool-btn" onclick="deleteSelected()" title="刪除選取"><i data-lucide="trash-2"></i></button>
+      <button class="tool-btn" id="btn-export-png" title="匯出 PNG"><i data-lucide="image"></i></button>
+      <button class="tool-btn" id="btn-export-pdf" title="匯出 PDF"><i data-lucide="file-text"></i></button>
+      <button class="tool-btn" id="btn-delete" title="刪除選取"><i data-lucide="trash-2"></i></button>
 
       <div class="tool-divider"></div>
 
-      <button class="tool-btn" onclick="exportDesignJSON()" title="匯出設計 JSON"><i data-lucide="download"></i></button>
-      <button class="tool-btn" onclick="triggerImportJSON()" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
+      <button class="tool-btn" id="btn-export-json" title="匯出設計 JSON"><i data-lucide="download"></i></button>
+      <button class="tool-btn" id="btn-import-json" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
       <input id="import-json-input" type="file" accept="application/json" style="display:none" />
-      <button class="tool-btn" onclick="resetDesign(true)" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
+      <button class="tool-btn" id="btn-reset" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
 
       <div class="tool-divider"></div>
 
-      <button class="tool-btn" onclick="toggleGrid()" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
-      <button class="tool-btn" onclick="toggleSnap()" title="吸附格線"><i data-lucide="magnet"></i></button>
+      <button class="tool-btn" id="btn-grid" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
+      <button class="tool-btn" id="btn-snap" title="吸附格線"><i data-lucide="magnet"></i></button>
     </div>
 
     <div id="container"></div>
@@ -181,12 +172,19 @@
   </aside>
 </div>
 
-<script>
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.128.0/build/three.module.js";
+import { OrbitControls } from "https://unpkg.com/three@0.128.0/examples/jsm/controls/OrbitControls.js";
+import { RoundedBoxGeometry } from "https://unpkg.com/three@0.128.0/examples/jsm/geometries/RoundedBoxGeometry.js";
+
+/* ===========================
+ * Globals (non-module libs)
+ * =========================== */
+window.lucide?.createIcons?.();
+
 /* ===========================
  * Helpers / UI
  * =========================== */
-lucide.createIcons();
-
 function toast(msg, ms = 1200){
   const el = document.getElementById('toast');
   if(!el) return;
@@ -210,7 +208,6 @@ function escapeHtml(s){
 const GRID_PX = 10;
 const MM_PER_GRID = 100;
 const MM_PER_PX = MM_PER_GRID / GRID_PX;
-
 function pxToMm(px){ return Math.round(px * MM_PER_PX); }
 function mmToPx(mm){ return mm / MM_PER_PX; }
 function mmToCm(mm){ return (mm / 10); }
@@ -220,21 +217,7 @@ function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
 /* ===========================
  * Room
  * =========================== */
-const ROOM = {
-  widthMm: 6000,
-  depthMm: 4000,
-  wallHeightMm: 2800,
-  wallThicknessMm: 100
-};
-
-function focusRoomSettings(){
-  selectedNodes = [];
-  selectedNode = null;
-  tr.nodes([]);
-  renderInspector('room');
-  layer.draw();
-  if(is3DVisible()) update3D();
-}
+const ROOM = { widthMm: 6000, depthMm: 4000, wallHeightMm: 2800, wallThicknessMm: 100 };
 
 /* ===========================
  * Device Catalog
@@ -249,9 +232,9 @@ const DEVICE_CATALOG = [
   { key:'incubator', name:'培養箱', wMm: 700, dMm: 600, hMm: 1600, color:'#a78bfa' },
 ];
 const DEVICE_BY_KEY = new Map(DEVICE_CATALOG.map(d => [d.key, d]));
+
 function renderDeviceCatalog(){
   const section = document.getElementById('device-catalog');
-  if(!section) return;
   const title = section.querySelector('.tool-section-title');
   section.innerHTML = '';
   section.appendChild(title);
@@ -263,11 +246,6 @@ function renderDeviceCatalog(){
     div.onclick = () => addDeviceFromCatalog(d.key);
     section.appendChild(div);
   });
-}
-function addDeviceFromCatalog(key){
-  const d = DEVICE_BY_KEY.get(key);
-  if(!d) return;
-  addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), d.color, d.key);
 }
 
 /* ===========================
@@ -291,8 +269,7 @@ let selectedNode = null;
 
 let gridVisible = true;
 let snapEnabled = true;
-function toggleGrid(){ gridVisible = !gridVisible; drawGrid(); toast(gridVisible?'格線：顯示':'格線：隱藏'); }
-function toggleSnap(){ snapEnabled = !snapEnabled; toast(snapEnabled?'吸附：開啟':'吸附：關閉'); }
+
 function snapPx(v){ return Math.round(v / GRID_PX) * GRID_PX; }
 
 function drawGrid(){
@@ -328,21 +305,24 @@ function getRoomRectPx(){ if(!roomRect2D) drawRoomBoundary2D(); return roomRect2
 
 /* selection rectangle */
 let selecting=false, selectionRect, startPos=null;
-(function initSelectionRect(){
-  selectionRect = new Konva.Rect({
-    x:0,y:0,width:0,height:0,
-    fill:'rgba(59,130,246,0.12)',
-    stroke:'rgba(59,130,246,0.9)',
-    strokeWidth:1,
-    visible:false,
-    listening:false
-  });
-  layer.add(selectionRect);
-})();
+selectionRect = new Konva.Rect({
+  x:0,y:0,width:0,height:0,
+  fill:'rgba(59,130,246,0.12)',
+  stroke:'rgba(59,130,246,0.9)',
+  strokeWidth:1,
+  visible:false,
+  listening:false
+});
+layer.add(selectionRect);
 
 /* Nodes */
 function addZone(name){
   createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.1)', '#3b82f6', 'zone');
+}
+function addDeviceFromCatalog(key){
+  const d = DEVICE_BY_KEY.get(key);
+  if(!d) return;
+  addDevice(d.name, mmToPx(d.wMm), mmToPx(d.dMm), mmToPx(d.hMm), d.color, d.key);
 }
 function addDevice(name, wPx, dPx, hPx, color, deviceKey){
   createNode('device', name, wPx, dPx, hPx, color, '#1e293b', deviceKey || 'device');
@@ -416,7 +396,7 @@ function updateUI(group){
   if(selectedNodes.includes(group)) renderInspector();
 }
 
-/* selection model */
+/* selection */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
@@ -437,6 +417,8 @@ function toggleSelectNode(node){
   selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
   applyTransformer(); renderInspector();
 }
+
+/* marquee */
 stage.on('click tap', (e) => { if(e.target===stage){ clearSelection(); if(is3DVisible()) update3D(); }});
 stage.on('mousedown touchstart', (e) => {
   if(is3DVisible()) return;
@@ -475,7 +457,7 @@ stage.on('mouseup touchend', (e) => {
   if(is3DVisible()) update3D();
 });
 
-/* inspector */
+/* inspector (minimal, keep stable) */
 function renderInspector(mode){
   const container = document.getElementById('inspector-content');
 
@@ -499,10 +481,7 @@ function renderInspector(mode){
     return;
   }
   if(selectedNodes.length > 1){
-    container.innerHTML = `
-      <div class="chip">已選取：${selectedNodes.length} 個物件</div>
-      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取 (${selectedNodes.length})</button>
-    `;
+    container.innerHTML = `<div class="chip">已選取：${selectedNodes.length} 個物件</div><button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取</button>`;
     return;
   }
 
@@ -515,61 +494,20 @@ function renderInspector(mode){
 
   container.innerHTML = `
     <div class="chip">已選取：1 個物件</div>
-    <div class="prop-row" style="margin-top:12px;">
-      <label class="prop-label">名稱</label>
-      <input type="text" value="${escapeHtml(n.findOne('.title-text').text())}" oninput="updateProp('name', this.value)">
+    <div class="hint" style="margin-top:10px;">
+      類別：<b>${escapeHtml(key)}</b><br/>
+      尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b><br/>
+      高度：<b>${fmtCm(pxToMm(hPx))}</b>
     </div>
-    <div class="prop-grid">
-      <div class="prop-group"><label class="prop-label">X (mm)</label><input type="number" value="${pxToMm(n.x())}" oninput="updateProp('xMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">Y (mm)</label><input type="number" value="${pxToMm(n.y())}" oninput="updateProp('yMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">寬 (mm)</label><input type="number" value="${pxToMm(wPx)}" oninput="updateProp('wMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">深 (mm)</label><input type="number" value="${pxToMm(dPx)}" oninput="updateProp('dMm', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">旋轉 (deg)</label><input type="number" value="${Math.round(n.rotation())}" oninput="updateProp('rot', this.value)"></div>
-      <div class="prop-group"><label class="prop-label">高度 (mm)</label><input type="number" value="${pxToMm(hPx)}" oninput="updateProp('hMm', this.value)"></div>
-    </div>
-    <div class="hint">類別：<b>${escapeHtml(key)}</b><br/>尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b> / 擺放高度：<b>${fmtCm(pxToMm(hPx))}</b></div>
     <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
   `;
 }
+
 function updateRoom(p, v){
   const mm = Math.max(1000, safeInt(v, ROOM[p]));
   ROOM[p] = mm;
   drawGrid();
   drawRoomBoundary2D();
-  scheduleAutosave();
-  if(is3DVisible()) update3D();
-}
-function updateProp(p, v){
-  if(selectedNodes.length !== 1) return;
-  const node = selectedNodes[0];
-
-  if(p==='name') node.findOne('.title-text').text(v);
-
-  if(p==='xMm') node.x(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
-  if(p==='yMm') node.y(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
-
-  if(p==='wMm'){
-    const rect = node.findOne('.main-rect');
-    const baseW = rect.width();
-    let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseW))));
-    if(snapEnabled) targetPx = Math.max(GRID_PX, snapPx(targetPx));
-    node.scaleX(targetPx / baseW);
-  }
-  if(p==='dMm'){
-    const rect = node.findOne('.main-rect');
-    const baseH = rect.height();
-    let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseH))));
-    if(snapEnabled) targetPx = Math.max(GRID_PX, snapPx(targetPx));
-    node.scaleY(targetPx / baseH);
-  }
-
-  if(p==='rot') node.rotation(safeInt(v));
-  if(p==='hMm') node.attrs.customData.height3dPx = mmToPx(Math.max(0, safeInt(v)));
-
-  if(snapEnabled) normalizeGroupToGrid(node);
-  constrainToRoom(node);
-  updateUI(node);
-  layer.draw();
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
@@ -583,6 +521,7 @@ function deleteSelected(){
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
+
 function exportImg(f){
   tr.nodes([]); layer.draw();
   if(f==='png'){
@@ -591,7 +530,7 @@ function exportImg(f){
     a.href=stage.toDataURL();
     a.click();
   }else{
-    const doc=new jspdf.jsPDF('l','px',[stage.width(), stage.height()]);
+    const doc = new window.jspdf.jsPDF('l','px',[stage.width(), stage.height()]);
     doc.addImage(stage.toDataURL(), 'PNG', 0,0, stage.width(), stage.height());
     doc.save('lab.pdf');
   }
@@ -602,7 +541,10 @@ const STORAGE_KEY='labcad_design_v1';
 let autosaveTimer=null;
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
-  autosaveTimer=setTimeout(() => saveDesignToLocalStorage(), 150);
+  autosaveTimer=setTimeout(() => {
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON())); }
+    catch(err){ console.error(err); toast('自動保存失敗'); }
+  }, 150);
 }
 function serializeNode(group){
   const r = group.findOne('.main-rect');
@@ -610,7 +552,6 @@ function serializeNode(group){
   const wPx = r.width()*group.scaleX();
   const dPx = r.height()*group.scaleY();
   const hPx = group.attrs.customData?.height3dPx || 0;
-
   return {
     type: group.name(),
     key: group.attrs.customData?.deviceKey || group.name(),
@@ -630,9 +571,8 @@ function getDesignJSON(){
   const nodes = layer.getChildren()
     .filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'))
     .map(serializeNode);
-
   return {
-    version: 6,
+    version: 62,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
     room: { ...ROOM },
@@ -640,33 +580,33 @@ function getDesignJSON(){
     nodes
   };
 }
-function saveDesignToLocalStorage(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON())); }
-  catch(err){ console.error(err); toast('自動保存失敗（localStorage）'); }
+function downloadText(filename, text, mime='application/json'){
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
-function resetDesign(alsoClearLocalStorage=false){
-  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
-  groups.forEach(g => g.destroy());
-  selectionRect.visible(false);
-  clearSelection();
-  layer.draw();
-  if(alsoClearLocalStorage){ localStorage.removeItem(STORAGE_KEY); toast('已清空設計'); }
-  else scheduleAutosave();
-  if(is3DVisible()) update3D();
+function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
+function tryLoadFromLocalStorage(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) return;
+  try{ loadDesignFromObject(JSON.parse(raw)); toast('已從自動保存載入'); }
+  catch(err){ console.warn(err); }
 }
 function loadDesignFromObject(design){
-  if(!design || !Array.isArray(design.nodes)) throw new Error('Invalid design format');
-  resetDesign(false);
+  if(!design || !Array.isArray(design.nodes)) return;
+  // clear
+  layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g => g.destroy());
+  clearSelection();
 
   if(design.room){
     ROOM.widthMm = design.room.widthMm ?? ROOM.widthMm;
     ROOM.depthMm = design.room.depthMm ?? ROOM.depthMm;
     ROOM.wallHeightMm = design.room.wallHeightMm ?? ROOM.wallHeightMm;
     ROOM.wallThicknessMm = design.room.wallThicknessMm ?? ROOM.wallThicknessMm;
-  }
-  if(design.ui){
-    gridVisible = design.ui.gridVisible ?? gridVisible;
-    snapEnabled = design.ui.snapEnabled ?? snapEnabled;
   }
 
   design.nodes.forEach(n => {
@@ -680,7 +620,7 @@ function loadDesignFromObject(design){
       y: mmToPx(Number(n.yMm) || 0),
       draggable: true,
       name: type,
-      customData: { height3dPx: mmToPx(Number(n.hMm)||0), deviceKey: n.key || (type==='zone'?'zone':'device') }
+      customData: { height3dPx: mmToPx(Number(n.hMm)||0), deviceKey: n.key || type }
     });
 
     const rect = new Konva.Rect({
@@ -691,7 +631,6 @@ function loadDesignFromObject(design){
 
     const title = new Konva.Text({ text:n.name || '', fontSize:14, fill:stroke, padding:8, name:'title-text' });
     const dim = new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
-
     group.rotation(Number(n.rot)||0);
     group.add(rect,title,dim);
     updateUI(group);
@@ -720,108 +659,71 @@ function loadDesignFromObject(design){
     if(type==='zone') group.moveToBottom();
   });
 
-  drawGrid();
-  drawRoomBoundary2D();
-  layer.draw();
-  scheduleAutosave();
+  drawGrid(); drawRoomBoundary2D(); layer.draw();
   if(is3DVisible()) update3D();
-  toast('已載入設計');
 }
-function tryLoadFromLocalStorage(){
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if(!raw) return;
-  try{ loadDesignFromObject(JSON.parse(raw)); toast('已從自動保存載入'); }
-  catch(err){ console.warn('Failed to load autosave:', err); }
-}
-function downloadText(filename, text, mime='application/json'){
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
-function triggerImportJSON(){ document.getElementById('import-json-input').click(); }
-document.getElementById('import-json-input').addEventListener('change', (e) => {
-  const file = e.target.files && e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try{ loadDesignFromObject(JSON.parse(reader.result)); toast('已匯入 JSON'); }
-    catch(err){ console.error(err); toast('匯入失敗：JSON 格式不正確'); }
-    finally{ e.target.value=''; }
-  };
-  reader.readAsText(file);
-});
 
 /* ===========================
- * 3D Prefab builder (Stage 6 v1)
+ * 3D Prefabs (RoundedBoxGeometry)
  * =========================== */
-function matStandard(hex, opts={}){
-  return new THREE.MeshStandardMaterial({
+function stdMat(hex, opts={}){
+  const m = new THREE.MeshStandardMaterial({
     color: new THREE.Color(hex),
-    roughness: opts.roughness ?? 0.65,
+    roughness: opts.roughness ?? 0.7,
     metalness: opts.metalness ?? 0.05,
     transparent: !!opts.transparent,
     opacity: opts.opacity ?? 1
   });
-}
-function matEmissive(hex, emissiveHex, intensity){
-  const m = matStandard(hex, { roughness:0.55, metalness:0.08 });
-  m.emissive = new THREE.Color(emissiveHex);
-  m.emissiveIntensity = intensity;
+  if(opts.emissive){
+    m.emissive = new THREE.Color(opts.emissive);
+    m.emissiveIntensity = opts.emissiveIntensity ?? 0.6;
+  }
   return m;
 }
-function addEdges(root, geometry, color=0x94a3b8, opacity=0.35){
-  const e = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geometry),
-    new THREE.LineBasicMaterial({ color, transparent:true, opacity })
-  );
-  root.add(e);
-  return e;
+
+function makeRoundedBox(w, h, d, radius, smooth=3, mat){
+  const g = new RoundedBoxGeometry(w, h, d, smooth, radius);
+  const m = new THREE.Mesh(g, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
 }
-function addHandle(root, x, y, z, len, vertical=true){
-  const geo = new THREE.CylinderGeometry(8, 8, len, 10);
-  const mat = matStandard('#cbd5e1', { roughness:0.35, metalness:0.55 });
+
+function makeHandle(x, y, z, len, vertical=true){
+  const geo = new THREE.CylinderGeometry(7, 7, len, 12);
+  const mat = stdMat('#cbd5e1', { roughness:0.28, metalness:0.75 });
   const m = new THREE.Mesh(geo, mat);
-  if(vertical){
-    // cylinder default Y axis -> vertical already
-  }else{
-    m.rotation.z = Math.PI/2;
-  }
+  if(!vertical) m.rotation.z = Math.PI/2;
   m.position.set(x,y,z);
   m.castShadow = true;
-  root.add(m);
+  return m;
 }
-function addPanel(root, x, y, z, w, h){
-  const geo = new THREE.BoxGeometry(w, h, 6);
-  const mat = matEmissive('#1f2937', '#60a5fa', 0.65);
+
+function makePanel(x, y, z, w, h){
+  const geo = new RoundedBoxGeometry(w, h, 10, 2, Math.min(8, w*0.08));
+  const mat = stdMat('#0b1220', { roughness:0.5, metalness:0.05, emissive:'#60a5fa', emissiveIntensity:0.85 });
   const m = new THREE.Mesh(geo, mat);
   m.position.set(x,y,z);
   m.castShadow = false;
-  root.add(m);
+  return m;
 }
-function buildBench(w, d, h, baseColor){
-  const root = new THREE.Group();
-  // top board
-  const topGeo = new THREE.BoxGeometry(w, 40, d);
-  const top = new THREE.Mesh(topGeo, matStandard('#e5e7eb', { roughness:0.85, metalness:0.02 }));
-  top.position.set(0, h - 20, 0);
-  top.castShadow = true; top.receiveShadow = true;
-  root.add(top);
-  addEdges(root, topGeo, 0x64748b, 0.25);
 
-  // legs
-  const legGeo = new THREE.BoxGeometry(30, h - 60, 30);
-  const legMat = matStandard('#334155', { roughness:0.9, metalness:0.05 });
+function buildBench(w, d, h){
+  const root = new THREE.Group();
+
+  const top = makeRoundedBox(w, 44, d, 16, 3, stdMat('#f1f5f9', { roughness:0.88, metalness:0.02 }));
+  top.position.set(0, h - 22, 0);
+  root.add(top);
+
+  // frame + legs
+  const legH = h - 70;
+  const legMat = stdMat('#334155', { roughness:0.92, metalness:0.08 });
+  const legGeo = new RoundedBoxGeometry(28, legH, 28, 1, 6);
   const offsets = [
-    [-w/2+25, (h-60)/2, -d/2+25],
-    [ w/2-25, (h-60)/2, -d/2+25],
-    [-w/2+25, (h-60)/2,  d/2-25],
-    [ w/2-25, (h-60)/2,  d/2-25],
+    [-w/2+26, legH/2, -d/2+26],
+    [ w/2-26, legH/2, -d/2+26],
+    [-w/2+26, legH/2,  d/2-26],
+    [ w/2-26, legH/2,  d/2-26],
   ];
   offsets.forEach(([x,y,z]) => {
     const leg = new THREE.Mesh(legGeo, legMat);
@@ -830,184 +732,146 @@ function buildBench(w, d, h, baseColor){
     root.add(leg);
   });
 
-  // modesty frame
-  const frameGeo = new THREE.BoxGeometry(w-40, 20, 20);
-  const frame = new THREE.Mesh(frameGeo, legMat);
-  frame.position.set(0, 120, -d/2 + 20);
-  frame.castShadow = true;
+  const frame = makeRoundedBox(w-60, 20, 20, 6, 1, legMat);
+  frame.position.set(0, 130, -d/2 + 22);
   root.add(frame);
 
-  return { root, mainMesh: top };
+  return { root, pickHeight: h };
 }
-function buildCabinet(w, d, h, bodyColor, opts={}){
-  const root = new THREE.Group();
-  const bodyGeo = new THREE.BoxGeometry(w, h, d);
-  const bodyMat = matStandard(bodyColor, { roughness:0.7, metalness:0.05 });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.castShadow = true; body.receiveShadow = true;
-  root.add(body);
-  addEdges(root, bodyGeo, 0x94a3b8, 0.28);
 
-  // door line (front)
-  const lineGeo = new THREE.BoxGeometry(w*0.92, h*0.9, 2);
-  const lineMat = matStandard('#0b1220', { roughness:1.0, metalness:0.0 });
-  const line = new THREE.Mesh(lineGeo, lineMat);
-  line.position.set(0, 0, d/2 + 1);
-  line.castShadow = false;
-  root.add(line);
+function buildCabinetLike(w, d, h, bodyHex, withGlass=false){
+  const root = new THREE.Group();
+  const body = makeRoundedBox(w, h, d, Math.min(22, Math.min(w,d)*0.08), 3, stdMat(bodyHex, { roughness:0.78, metalness:0.05 }));
+  body.position.set(0, h/2, 0);
+  root.add(body);
+
+  // door seam
+  const seam = makeRoundedBox(w*0.9, h*0.88, 2, 10, 1, stdMat('#0b1220', { roughness:1.0, metalness:0.0, transparent:true, opacity:0.55 }));
+  seam.position.set(0, h/2, d/2 + 1);
+  root.add(seam);
 
   // handle
-  addHandle(root, w/2 - 35, 0, d/2 + 10, h*0.45, true);
+  root.add(makeHandle(w/2 - 36, h/2, d/2 + 14, h*0.45, true));
 
   // top panel
-  if(opts.panel){
-    addPanel(root, 0, h/2 - 90, d/2 + 8, w*0.45, 70);
+  root.add(makePanel(0, h - 120, d/2 + 12, w*0.5, 74));
+
+  // glass overlay (incubator)
+  if(withGlass){
+    const glass = makeRoundedBox(w*0.82, h*0.74, 8, 18, 2, stdMat('#93c5fd', { transparent:true, opacity:0.16, roughness:0.15, metalness:0.0 }));
+    glass.position.set(0, h/2, d/2 + 8);
+    glass.castShadow = false;
+    root.add(glass);
   }
 
-  // base feet
-  const footGeo = new THREE.CylinderGeometry(10, 10, 18, 10);
-  const footMat = matStandard('#0f172a', { roughness:0.9, metalness:0.1 });
+  // feet
+  const footGeo = new THREE.CylinderGeometry(10, 10, 18, 12);
+  const footMat = stdMat('#0f172a', { roughness:0.9, metalness:0.1 });
   const corners = [
-    [-w/2+22, -h/2+10, -d/2+22],
-    [ w/2-22, -h/2+10, -d/2+22],
-    [-w/2+22, -h/2+10,  d/2-22],
-    [ w/2-22, -h/2+10,  d/2-22],
+    [-w/2+22, 10, -d/2+22],
+    [ w/2-22, 10, -d/2+22],
+    [-w/2+22, 10,  d/2-22],
+    [ w/2-22, 10,  d/2-22],
   ];
   corners.forEach(([x,y,z]) => {
     const f = new THREE.Mesh(footGeo, footMat);
-    f.position.set(x, y, z);
+    f.position.set(x,y,z);
     f.castShadow = true;
     root.add(f);
   });
 
-  return { root, mainMesh: body };
+  return { root, pickHeight: h };
 }
-function buildCentrifuge(w,d,h,color){
-  const root = new THREE.Group();
-  // base
-  const baseGeo = new THREE.BoxGeometry(w, h*0.55, d);
-  const base = new THREE.Mesh(baseGeo, matStandard('#e5e7eb', { roughness:0.75 }));
-  base.position.set(0, -h*0.225, 0);
-  base.castShadow=true; base.receiveShadow=true;
-  root.add(base);
-  addEdges(root, baseGeo, 0x64748b, 0.25);
 
-  // lid (cylinder)
-  const lidGeo = new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 24);
-  const lid = new THREE.Mesh(lidGeo, matStandard('#cbd5e1', { roughness:0.55 }));
-  lid.position.set(0, h*0.12, 0);
-  lid.castShadow=true;
+function buildCentrifuge(w, d, h){
+  const root = new THREE.Group();
+  const baseH = h*0.55;
+  const base = makeRoundedBox(w, baseH, d, Math.min(18, Math.min(w,d)*0.08), 3, stdMat('#f1f5f9', { roughness:0.82 }));
+  base.position.set(0, baseH/2, 0);
+  root.add(base);
+
+  const lid = new THREE.Mesh(
+    new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 28),
+    stdMat('#cbd5e1', { roughness:0.55, metalness:0.08 })
+  );
+  lid.position.set(0, baseH + (h*0.14), 0);
+  lid.castShadow = true;
   root.add(lid);
 
-  // panel
-  addPanel(root, w*0.22, 0, d/2 + 8, w*0.35, h*0.22);
-
-  return { root, mainMesh: base };
+  root.add(makePanel(w*0.22, baseH*0.65, d/2 + 14, w*0.38, h*0.22));
+  return { root, pickHeight: h };
 }
-function buildSink(w,d,h,color){
-  const root = new THREE.Group();
-  // counter
-  const topGeo = new THREE.BoxGeometry(w, 40, d);
-  const top = new THREE.Mesh(topGeo, matStandard('#e5e7eb', { roughness:0.85 }));
-  top.position.set(0, h - 20, 0);
-  top.castShadow=true; top.receiveShadow=true;
-  root.add(top);
-  addEdges(root, topGeo, 0x64748b, 0.25);
 
-  // basin (slightly darker inset)
-  const basinGeo = new THREE.BoxGeometry(w*0.55, 20, d*0.45);
-  const basin = new THREE.Mesh(basinGeo, matStandard('#cbd5e1', { roughness:0.55, metalness:0.25 }));
+function buildSink(w, d, h){
+  const root = new THREE.Group();
+  const top = makeRoundedBox(w, 44, d, 16, 3, stdMat('#f1f5f9', { roughness:0.9 }));
+  top.position.set(0, h - 22, 0);
+  root.add(top);
+
+  const basin = makeRoundedBox(w*0.55, 26, d*0.45, 14, 2, stdMat('#cbd5e1', { roughness:0.4, metalness:0.28 }));
   basin.position.set(-w*0.08, h - 30, 0);
-  basin.castShadow=true; basin.receiveShadow=true;
   root.add(basin);
 
-  // faucet
-  const postGeo = new THREE.CylinderGeometry(10, 10, 120, 14);
-  const post = new THREE.Mesh(postGeo, matStandard('#94a3b8', { roughness:0.35, metalness:0.6 }));
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 120, 14), stdMat('#94a3b8', { roughness:0.3, metalness:0.75 }));
   post.position.set(w*0.2, h + 30, 0);
-  post.castShadow=true;
+  post.castShadow = true;
   root.add(post);
 
-  const spoutGeo = new THREE.CylinderGeometry(8, 8, 120, 14);
-  const spout = new THREE.Mesh(spoutGeo, post.material);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 120, 14), post.material);
   spout.rotation.z = Math.PI/2;
   spout.position.set(w*0.2 + 55, h + 70, 0);
-  spout.castShadow=true;
+  spout.castShadow = true;
   root.add(spout);
 
-  // cabinet base
-  const cabGeo = new THREE.BoxGeometry(w*0.92, h-60, d*0.92);
-  const cab = new THREE.Mesh(cabGeo, matStandard('#f8fafc', { roughness:0.85 }));
+  const cab = makeRoundedBox(w*0.92, h-60, d*0.92, 16, 3, stdMat('#f8fafc', { roughness:0.9 }));
   cab.position.set(0, (h-60)/2, 0);
-  cab.castShadow=true; cab.receiveShadow=true;
   root.add(cab);
+  root.add(makeHandle(w*0.35, (h-60)/2, d/2 + 14, (h-60)*0.35, true));
 
-  // handle
-  addHandle(root, w*0.35, (h-60)/2, d/2 + 8, (h-60)*0.35, true);
-
-  return { root, mainMesh: top };
+  return { root, pickHeight: h };
 }
-function buildHood(w,d,h,color){
-  const root = new THREE.Group();
-  // body
-  const bodyGeo = new THREE.BoxGeometry(w, h, d);
-  const body = new THREE.Mesh(bodyGeo, matStandard('#e5e7eb', { roughness:0.85 }));
-  body.castShadow=true; body.receiveShadow=true;
-  root.add(body);
-  addEdges(root, bodyGeo, 0x94a3b8, 0.28);
 
-  // front glass
-  const glassGeo = new THREE.BoxGeometry(w*0.9, h*0.55, 6);
-  const glassMat = matStandard('#93c5fd', { transparent:true, opacity:0.22, roughness:0.2, metalness:0.0 });
-  const glass = new THREE.Mesh(glassGeo, glassMat);
-  glass.position.set(0, h*0.05, d/2 + 4);
-  glass.castShadow=false; glass.receiveShadow=false;
+function buildHood(w, d, h){
+  const root = new THREE.Group();
+  const body = makeRoundedBox(w, h, d, Math.min(22, Math.min(w,d)*0.08), 3, stdMat('#f1f5f9', { roughness:0.9 }));
+  body.position.set(0, h/2, 0);
+  root.add(body);
+
+  const glass = makeRoundedBox(w*0.9, h*0.55, 10, 16, 2, stdMat('#93c5fd', { transparent:true, opacity:0.18, roughness:0.12, metalness:0.0 }));
+  glass.position.set(0, h*0.55, d/2 + 12);
+  glass.castShadow = false;
   root.add(glass);
 
-  // top panel
-  addPanel(root, 0, h/2 - 120, d/2 + 8, w*0.55, 80);
+  root.add(makePanel(0, h - 140, d/2 + 16, w*0.6, 84));
 
-  // base plinth
-  const baseGeo = new THREE.BoxGeometry(w, 40, d);
-  const base = new THREE.Mesh(baseGeo, matStandard('#94a3b8', { roughness:0.9, metalness:0.05 }));
-  base.position.set(0, -h/2 + 20, 0);
-  base.castShadow=true;
+  const base = makeRoundedBox(w, 46, d, 14, 2, stdMat('#94a3b8', { roughness:0.95, metalness:0.05 }));
+  base.position.set(0, 23, 0);
   root.add(base);
 
-  return { root, mainMesh: body };
+  return { root, pickHeight: h };
 }
-function buildIncubator(w,d,h,color){
-  // like cabinet + glass door
-  const { root, mainMesh } = buildCabinet(w,d,h,'#f8fafc',{ panel:true });
-  // glass door overlay
-  const glassGeo = new THREE.BoxGeometry(w*0.85, h*0.75, 6);
-  const glassMat = matStandard('#93c5fd', { transparent:true, opacity:0.18, roughness:0.1, metalness:0.0 });
-  const glass = new THREE.Mesh(glassGeo, glassMat);
-  glass.position.set(0, 0, d/2 + 5);
-  root.add(glass);
-  return { root, mainMesh };
-}
-function buildPrefab(deviceKey, w, d, h, color){
-  // w,d,h are in px world units in our app (mapped from mm)
-  switch(deviceKey){
-    case 'bench': return buildBench(w,d,mmToPx(800), color);
-    case 'fridge': return buildCabinet(w,d,h,'#f8fafc',{ panel:true });
-    case 'ultra_low_freezer': return buildCabinet(w,d,h,'#e2e8f0',{ panel:true });
-    case 'incubator': return buildIncubator(w,d,h,color);
-    case 'centrifuge': return buildCentrifuge(w,d,h,color);
-    case 'sink': return buildSink(w,d,mmToPx(900),color);
-    case 'hood': return buildHood(w,d,h,color);
-    default: return buildCabinet(w,d,h,'#e5e7eb',{ panel:false });
+
+function buildPrefab(key, w, d, h){
+  // mid-rounded corners (level 2)
+  switch(key){
+    case 'bench': return buildBench(w, d, mmToPx(800));
+    case 'fridge': return buildCabinetLike(w, d, h, '#f8fafc', false);
+    case 'ultra_low_freezer': return buildCabinetLike(w, d, h, '#e2e8f0', false);
+    case 'incubator': return buildCabinetLike(w, d, h, '#f8fafc', true);
+    case 'centrifuge': return buildCentrifuge(w, d, h);
+    case 'sink': return buildSink(w, d, mmToPx(900));
+    case 'hood': return buildHood(w, d, h);
+    default: return buildCabinetLike(w, d, h, '#e5e7eb', false);
   }
 }
 
 /* ===========================
- * 3D Engine (same as stage 5, but device mesh uses prefabs)
+ * 3D Engine (picking + highlight + room)
  * =========================== */
 let sc, cam, rend, ctrl;
-let objectsGroup, roomGroup3D, groundMesh, dirLight;
+let objectsGroup, roomGroup3D, dirLight, groundMesh;
 
-const threeMap = new Map(); // konvaId -> { root, pickMesh, edgesGroup?, baseMats, hiMats ... }
+const threeMap = new Map(); // id -> { root, pickMesh, outline, key }
 const pickables = [];
 
 const raycaster = new THREE.Raycaster();
@@ -1030,6 +894,7 @@ function resize3D(){
   cam.updateProjectionMatrix();
   updateDebug3D();
 }
+
 function init3DIfNeeded(){
   const c3d = document.getElementById('three-container');
   if(sc) return;
@@ -1048,7 +913,7 @@ function init3DIfNeeded(){
   rend.shadowMap.type = THREE.PCFSoftShadowMap;
   c3d.appendChild(rend.domElement);
 
-  ctrl = new THREE.OrbitControls(cam, rend.domElement);
+  ctrl = new OrbitControls(cam, rend.domElement);
   ctrl.enableDamping = true;
   ctrl.dampingFactor = 0.08;
   ctrl.target.set(0, 0, 0);
@@ -1078,7 +943,6 @@ function init3DIfNeeded(){
   sc.add(groundMesh);
 
   sc.add(new THREE.GridHelper(8000, 80, 0x334155, 0x1e293b));
-  sc.add(new THREE.AxesHelper(200));
 
   roomGroup3D = new THREE.Group();
   sc.add(roomGroup3D);
@@ -1091,52 +955,9 @@ function init3DIfNeeded(){
   updateDebug3D();
 }
 
-function toggle3D(){
-  const btn = document.getElementById('toggle-3d');
-  const c2d = document.getElementById('container');
-  const c3d = document.getElementById('three-container');
-  const debug = document.getElementById('debug3d');
-
-  const opening = (c3d.style.display === 'none' || c3d.style.display === '');
-  if(opening){
-    c3d.style.display = 'block';
-    c2d.style.display = 'none';
-    btn.innerText = '返回 2D';
-    if(debug) debug.style.display = 'block';
-    requestAnimationFrame(() => {
-      init3DIfNeeded();
-      resize3D();
-      update3D();
-      animate3D();
-    });
-  }else{
-    hideInfoCard();
-    c3d.style.display = 'none';
-    c2d.style.display = 'block';
-    btn.innerText = '查看 3D 預覽';
-    if(debug) debug.style.display = 'none';
-  }
-}
-
-function disposeObject(obj){
-  if(!obj) return;
-  if(obj.geometry) obj.geometry.dispose();
-  if(obj.material){
-    if(Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose && m.dispose());
-    else if(obj.material.dispose) obj.material.dispose();
-  }
-}
-function clearGroup(group){
-  if(!group) return;
-  for(let i=group.children.length-1; i>=0; i--){
-    const child = group.children[i];
-    child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
-    group.remove(child);
-  }
-}
-
 function buildRoom3D(){
-  clearGroup(roomGroup3D);
+  // clear roomGroup3D
+  for(let i = roomGroup3D.children.length-1; i>=0; i--) roomGroup3D.remove(roomGroup3D.children[i]);
 
   const w = mmToPx(ROOM.widthMm);
   const d = mmToPx(ROOM.depthMm);
@@ -1167,7 +988,8 @@ function update3D(){
 
   buildRoom3D();
 
-  clearGroup(objectsGroup);
+  // clear objects
+  while(objectsGroup.children.length) objectsGroup.remove(objectsGroup.children[0]);
   threeMap.clear();
   pickables.length = 0;
 
@@ -1195,75 +1017,53 @@ function update3D(){
     const key = n.attrs.customData?.deviceKey || n.name();
 
     if(n.name() === 'device'){
-      // Build prefab group
-      const prefab = buildPrefab(key, wPx, dPx, hPx, r.fill());
+      const prefab = buildPrefab(key, wPx, dPx, hPx);
       const root = prefab.root;
+
       root.position.set(x3d, 0, z3d);
       root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
 
-      // place on ground (prefab is built centered, but some parts may sit above y=0; we ensure it sits on ground by moving up half height when needed)
-      // Our prefabs are mostly centered at y=0 for body or use absolute y offsets; keep as-is.
-
-      // Find a pick mesh:
-      // Use an invisible box as pick volume for reliable picking
-      const pickGeo = new THREE.BoxGeometry(wPx, hPx, dPx);
-      const pickMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 });
-      const pickMesh = new THREE.Mesh(pickGeo, pickMat);
-      pickMesh.position.set(0, hPx/2, 0);
-      pickMesh.userData = { konvaId: id, kind: 'device' };
-      root.add(pickMesh);
-
-      // Enable shadows on all meshes inside prefab
       root.traverse((obj) => {
         if(obj.isMesh){
-          // don't shadow for pick mesh
-          if(obj === pickMesh) return;
           obj.castShadow = true;
           obj.receiveShadow = true;
         }
       });
 
-      // Highlight: we'll store meshes to swap emissive via material tweak (simpler: add outline edges on root)
+      // pick volume
+      const pickGeo = new THREE.BoxGeometry(wPx, prefab.pickHeight ?? hPx, dPx);
+      const pickMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 });
+      const pickMesh = new THREE.Mesh(pickGeo, pickMat);
+      pickMesh.position.set(0, (prefab.pickHeight ?? hPx)/2, 0);
+      pickMesh.userData = { konvaId: id, kind:'device' };
+      root.add(pickMesh);
+
+      // outline
       const outline = new THREE.LineSegments(
-        new THREE.EdgesGeometry(new THREE.BoxGeometry(wPx, hPx, dPx)),
+        new THREE.EdgesGeometry(pickGeo),
         new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent:true, opacity:0.95 })
       );
-      outline.position.set(0, hPx/2, 0);
+      outline.position.copy(pickMesh.position);
       outline.visible = false;
       root.add(outline);
 
       objectsGroup.add(root);
-
-      threeMap.set(id, {
-        root,
-        pickMesh,
-        outline,
-        key,
-        // store list of "highlightable" meshes (exclude pick mesh)
-        highlightTargets: root.children.filter(c => c.isMesh && c !== pickMesh)
-      });
+      threeMap.set(id, { root, pickMesh, outline, key });
       pickables.push(pickMesh);
 
     }else{
-      // zone plane
-      const baseMat = new THREE.MeshStandardMaterial({
-        color: 0x3b82f6,
-        transparent: true,
-        opacity: 0.18,
-        roughness: 0.95,
-        metalness: 0.0,
-        side: THREE.DoubleSide
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0x3b82f6, transparent:true, opacity:0.18,
+        roughness: 0.95, metalness:0.0, side: THREE.DoubleSide
       });
-
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(wPx, dPx), baseMat);
-      mesh.rotation.x = -Math.PI / 2;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(wPx, dPx), mat);
+      mesh.rotation.x = -Math.PI/2;
       mesh.position.set(x3d, 1, z3d);
-      mesh.receiveShadow = true;
-      mesh.userData = { konvaId: id, kind: 'zone' };
+      mesh.userData = { konvaId: id, kind:'zone' };
 
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(mesh.geometry),
-        new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.9 })
+        new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent:true, opacity:0.9 })
       );
       edges.rotation.copy(mesh.rotation);
       edges.position.copy(mesh.position);
@@ -1272,8 +1072,8 @@ function update3D(){
       const root = new THREE.Group();
       root.add(mesh);
       root.add(edges);
-
       objectsGroup.add(root);
+
       threeMap.set(id, { root, pickMesh: mesh, outline: edges, key: 'zone', zoneMesh: mesh });
       pickables.push(mesh);
     }
@@ -1285,46 +1085,38 @@ function update3D(){
 }
 
 function sync3DSelectionHighlight(){
-  if(!sc || !objectsGroup) return;
   const sel = new Set(selectedNodes.map(n => n._id));
   threeMap.forEach((obj, id) => {
     const selected = sel.has(id);
+    obj.outline.visible = selected;
 
     if(obj.zoneMesh){
       obj.zoneMesh.material.opacity = selected ? 0.28 : 0.18;
-      obj.outline.visible = selected;
       return;
     }
-
-    // device: show outline + boost emissive on panel if exists
-    obj.outline.visible = selected;
 
     obj.root.traverse((m) => {
       if(!m.isMesh) return;
       if(m === obj.pickMesh) return;
-      // mild emissive highlight for all meshes
-      if(m.material && m.material.emissive !== undefined){
-        m.material.emissive = selected ? new THREE.Color(0x1d4ed8) : new THREE.Color(0x000000);
-        m.material.emissiveIntensity = selected ? 0.10 : 0.0;
+      if(m.material && m.material.emissive){
+        m.material.emissive.setHex(selected ? 0x1d4ed8 : 0x000000);
+        m.material.emissiveIntensity = selected ? 0.12 : 0.0;
       }
     });
   });
 }
 
 function fitCameraToRoom(roomWpx, roomDpx){
-  if(!cam || !ctrl) return;
   const maxDim = Math.max(roomWpx, roomDpx);
-  const center = new THREE.Vector3(0, 0, 0);
+  const center = new THREE.Vector3(0,0,0);
   ctrl.target.copy(center);
-
-  const fov = cam.fov * (Math.PI / 180);
-  let dist = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-  dist *= 1.4;
-
-  const dir = new THREE.Vector3(1, 1, 1).normalize();
+  const fov = cam.fov * (Math.PI/180);
+  let dist = Math.abs(maxDim/2/Math.tan(fov/2));
+  dist *= 1.35;
+  const dir = new THREE.Vector3(1,1,1).normalize();
   cam.position.copy(center.clone().add(dir.multiplyScalar(dist)));
-  cam.near = Math.max(1, dist / 100);
-  cam.far = Math.max(20000, dist * 10);
+  cam.near = Math.max(1, dist/100);
+  cam.far = Math.max(20000, dist*10);
   cam.updateProjectionMatrix();
   ctrl.update();
 }
@@ -1351,7 +1143,6 @@ function updateDebug3D(){
 /* picking + info card */
 function onPointerDown3D(e){
   if(!is3DVisible() || !cam) return;
-
   const rect = rend.domElement.getBoundingClientRect();
   const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
@@ -1386,10 +1177,9 @@ function getNodeSizeMm(node){
   const hPx = node.attrs.customData?.height3dPx || 0;
   return { wMm: pxToMm(wPx), dMm: pxToMm(dPx), hMm: pxToMm(hPx) };
 }
+
 function showInfoCardFor(node, pointerClient){
   const card = document.getElementById('info-card');
-  if(!card) return;
-
   const name = node.findOne('.title-text')?.text() || '';
   const key = node.attrs.customData?.deviceKey || node.name();
   const size = getNodeSizeMm(node);
@@ -1411,43 +1201,79 @@ function showInfoCardFor(node, pointerClient){
   let top = pointerClient.y + 14;
   if(left + cardRect.w > vw) left = pointerClient.x - cardRect.w - 14;
   if(top + cardRect.h > vh) top = pointerClient.y - cardRect.h - 14;
-
   card.style.left = `${left}px`;
   card.style.top = `${top}px`;
 }
 function hideInfoCard(){
   const card = document.getElementById('info-card');
-  if(card) card.style.display = 'none';
+  card.style.display = 'none';
 }
 
-/* hotkeys */
-window.addEventListener('keydown', (e) => {
-  const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : '';
-  const typing = tag === 'input' || tag === 'textarea';
+/* ===========================
+ * UI wiring
+ * =========================== */
+document.getElementById('room-settings-btn').onclick = () => renderInspector('room');
+document.getElementById('add-zone-btn').onclick = () => addZone('新規劃區域');
 
-  if(e.key === 'Escape'){
+document.getElementById('btn-export-png').onclick = () => exportImg('png');
+document.getElementById('btn-export-pdf').onclick = () => exportImg('pdf');
+document.getElementById('btn-delete').onclick = () => deleteSelected();
+
+document.getElementById('btn-export-json').onclick = () => exportDesignJSON();
+document.getElementById('btn-import-json').onclick = () => document.getElementById('import-json-input').click();
+document.getElementById('btn-reset').onclick = () => resetAll();
+
+document.getElementById('btn-grid').onclick = () => { gridVisible = !gridVisible; drawGrid(); };
+document.getElementById('btn-snap').onclick = () => { snapEnabled = !snapEnabled; };
+
+document.getElementById('toggle-3d').onclick = () => {
+  const c2d = document.getElementById('container');
+  const c3d = document.getElementById('three-container');
+  const debug = document.getElementById('debug3d');
+  const btn = document.getElementById('toggle-3d');
+
+  const opening = (c3d.style.display === 'none' || c3d.style.display === '');
+  if(opening){
+    c3d.style.display = 'block';
+    c2d.style.display = 'none';
+    btn.innerText = '返回 2D';
+    debug.style.display = 'block';
+    requestAnimationFrame(() => {
+      init3DIfNeeded();
+      resize3D();
+      update3D();
+      animate3D();
+    });
+  }else{
     hideInfoCard();
-    clearSelection();
-    layer.draw();
-    sync3DSelectionHighlight();
-    return;
+    c3d.style.display = 'none';
+    c2d.style.display = 'block';
+    btn.innerText = '查看 3D 預覽';
+    debug.style.display = 'none';
   }
-  if(!typing && (e.key === 'Delete' || e.key === 'Backspace')){
-    deleteSelected();
-    e.preventDefault();
-    return;
-  }
-  if(!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a'){
-    const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
-    selectedNodes = groups;
-    selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
-    applyTransformer();
-    renderInspector();
-    e.preventDefault();
-  }
+};
+
+document.getElementById('import-json-input').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{ loadDesignFromObject(JSON.parse(reader.result)); toast('已匯入 JSON'); }
+    catch(err){ console.error(err); toast('匯入失敗'); }
+    finally{ e.target.value=''; }
+  };
+  reader.readAsText(file);
 });
 
-/* resize */
+function resetAll(){
+  layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone')).forEach(g => g.destroy());
+  clearSelection();
+  localStorage.removeItem(STORAGE_KEY);
+  layer.draw();
+  if(is3DVisible()) update3D();
+  toast('已清空');
+}
+
 window.addEventListener('resize', () => {
   stage.width(window.innerWidth - 600);
   stage.height(window.innerHeight);
@@ -1457,11 +1283,9 @@ window.addEventListener('resize', () => {
   if(is3DVisible()) resize3D();
 });
 
-/* toolbar helpers */
-function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
-function triggerImportJSON(){ document.getElementById('import-json-input').click(); }
-
-/* boot */
+/* ===========================
+ * Boot
+ * =========================== */
 renderDeviceCatalog();
 drawGrid();
 drawRoomBoundary2D();
