@@ -79,18 +79,6 @@
       margin-top:10px;
     }
     .toggle input{ width:auto; }
-    .align-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:10px; }
-    .small-btn{
-      width:100%;
-      background:#0f172a;
-      border:1px solid rgba(148,163,184,.25);
-      color:#e2e8f0;
-      padding:8px 10px;
-      border-radius:8px;
-      cursor:pointer;
-      font-size:12px;
-    }
-    .small-btn:hover{ border-color: rgba(59,130,246,.7); }
 
     /* 3D info card */
     #info-card{
@@ -207,43 +195,39 @@ function toast(msg, ms = 1200){
   clearTimeout(el._t);
   el._t = setTimeout(() => el.style.display = 'none', ms);
 }
-
 function safeInt(v, fallback=0){
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
 }
-
 function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, (m) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
 
 /* ===========================
- * Units (Stage 5)
+ * Units
  * =========================== */
-/** UI grid: 10px per grid */
 const GRID_PX = 10;
-/** 1 grid = 100mm */
 const MM_PER_GRID = 100;
-/** Derived */
-const MM_PER_PX = MM_PER_GRID / GRID_PX; // 10mm per px
+const MM_PER_PX = MM_PER_GRID / GRID_PX;
 
 function pxToMm(px){ return Math.round(px * MM_PER_PX); }
 function mmToPx(mm){ return mm / MM_PER_PX; }
-function mmToCm(mm){ return (mm / 10); } // 10mm = 1cm
-
+function mmToCm(mm){ return (mm / 10); }
 function fmtMm(mm){ return `${Math.round(mm)}mm`; }
 function fmtCm(mm){ return `${Math.round(mmToCm(mm))}cm`; }
 
 /* ===========================
- * Room settings (Stage 5)
+ * Room
  * =========================== */
 const ROOM = {
-  widthMm: 6000,   // 6m
-  depthMm: 4000,   // 4m
+  widthMm: 6000,
+  depthMm: 4000,
   wallHeightMm: 2800,
   wallThicknessMm: 100
 };
 
 function focusRoomSettings(){
-  // show inspector room settings panel
   selectedNodes = [];
   selectedNode = null;
   tr.nodes([]);
@@ -264,10 +248,7 @@ const DEVICE_CATALOG = [
   { key:'ultra_low_freezer', name:'超低溫冰箱', wMm: 800, dMm: 800, hMm: 2000, color:'#38bdf8' },
   { key:'incubator', name:'培養箱', wMm: 700, dMm: 600, hMm: 1600, color:'#a78bfa' },
 ];
-
-const DEVICE_BY_NAME = new Map(DEVICE_CATALOG.map(d => [d.name, d]));
 const DEVICE_BY_KEY = new Map(DEVICE_CATALOG.map(d => [d.key, d]));
-
 function renderDeviceCatalog(){
   const section = document.getElementById('device-catalog');
   if(!section) return;
@@ -283,7 +264,6 @@ function renderDeviceCatalog(){
     section.appendChild(div);
   });
 }
-
 function addDeviceFromCatalog(key){
   const d = DEVICE_BY_KEY.get(key);
   if(!d) return;
@@ -298,7 +278,6 @@ const stage = new Konva.Stage({
   width: window.innerWidth - 600,
   height: window.innerHeight
 });
-
 const gridLayer = new Konva.Layer();
 const layer = new Konva.Layer();
 stage.add(gridLayer);
@@ -310,140 +289,82 @@ layer.add(tr);
 let selectedNodes = [];
 let selectedNode = null;
 
-/* ---- Grid / Snap ---- */
 let gridVisible = true;
 let snapEnabled = true;
-
-function toggleGrid(){
-  gridVisible = !gridVisible;
-  drawGrid();
-  toast(gridVisible ? '格線：顯示' : '格線：隱藏');
-}
-function toggleSnap(){
-  snapEnabled = !snapEnabled;
-  toast(snapEnabled ? '吸附：開啟' : '吸附：關閉');
-}
+function toggleGrid(){ gridVisible = !gridVisible; drawGrid(); toast(gridVisible?'格線：顯示':'格線：隱藏'); }
+function toggleSnap(){ snapEnabled = !snapEnabled; toast(snapEnabled?'吸附：開啟':'吸附：關閉'); }
 function snapPx(v){ return Math.round(v / GRID_PX) * GRID_PX; }
 
 function drawGrid(){
   gridLayer.destroyChildren();
   if(!gridVisible){ gridLayer.draw(); return; }
-
-  const w = stage.width();
-  const h = stage.height();
-
-  for(let x=0; x<=w; x+=GRID_PX){
-    gridLayer.add(new Konva.Line({ points:[x,0,x,h], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
-  }
-  for(let y=0; y<=h; y+=GRID_PX){
-    gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
-  }
+  const w = stage.width(), h = stage.height();
+  for(let x=0; x<=w; x+=GRID_PX) gridLayer.add(new Konva.Line({ points:[x,0,x,h], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
+  for(let y=0; y<=h; y+=GRID_PX) gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
   gridLayer.draw();
 }
 
-/* ===========================
- * Room boundary in 2D
- * =========================== */
+/* Room boundary 2D */
 let roomRect2D = null;
-
 function drawRoomBoundary2D(){
   if(roomRect2D) roomRect2D.destroy();
-
   const wPx = mmToPx(ROOM.widthMm);
   const dPx = mmToPx(ROOM.depthMm);
-
   roomRect2D = new Konva.Rect({
-    x: snapPx((stage.width() - wPx) / 2),
-    y: snapPx((stage.height() - dPx) / 2),
+    x: snapPx((stage.width() - wPx)/2),
+    y: snapPx((stage.height() - dPx)/2),
     width: wPx,
     height: dPx,
     stroke: 'rgba(15,23,42,0.45)',
     strokeWidth: 2,
     fill: 'rgba(15,23,42,0.03)',
-    listening: false,
-    name: 'room-boundary'
+    listening:false,
+    name:'room-boundary'
   });
-
-  // Put on grid layer (behind)
   gridLayer.add(roomRect2D);
   gridLayer.draw();
 }
+function getRoomRectPx(){ if(!roomRect2D) drawRoomBoundary2D(); return roomRect2D.getClientRect(); }
 
-function getRoomRectPx(){
-  if(!roomRect2D) drawRoomBoundary2D();
-  return roomRect2D.getClientRect();
-}
-
-/* ===========================
- * Selection rectangle
- * =========================== */
-let selecting = false;
-let selectionRect;
-let startPos = null;
-
-function initSelectionRect(){
+/* selection rectangle */
+let selecting=false, selectionRect, startPos=null;
+(function initSelectionRect(){
   selectionRect = new Konva.Rect({
-    x: 0, y: 0, width: 0, height: 0,
-    fill: 'rgba(59,130,246,0.12)',
-    stroke: 'rgba(59,130,246,0.9)',
-    strokeWidth: 1,
-    visible: false,
-    listening: false
+    x:0,y:0,width:0,height:0,
+    fill:'rgba(59,130,246,0.12)',
+    stroke:'rgba(59,130,246,0.9)',
+    strokeWidth:1,
+    visible:false,
+    listening:false
   });
   layer.add(selectionRect);
-}
-initSelectionRect();
+})();
 
-/* ===========================
- * Nodes CRUD
- * =========================== */
+/* Nodes */
 function addZone(name){
-  createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59, 130, 246, 0.1)', '#3b82f6', 'zone');
+  createNode('zone', name, mmToPx(3000), mmToPx(2000), 0, 'rgba(59,130,246,0.1)', '#3b82f6', 'zone');
 }
-
-/**
- * addDevice(name, wPx, dPx, hPx, color, deviceKey?)
- * hPx is stored as height3d in px-space; displayed in mm/cm by conversion.
- */
 function addDevice(name, wPx, dPx, hPx, color, deviceKey){
   createNode('device', name, wPx, dPx, hPx, color, '#1e293b', deviceKey || 'device');
 }
-
 function createNode(type, name, wPx, dPx, hPx, fill, stroke, deviceKey){
   const group = new Konva.Group({
     x: 100, y: 100, draggable: true, name: type,
-    customData: {
-      height3dPx: hPx || 0,
-      deviceKey: deviceKey || (type === 'zone' ? 'zone' : 'device')
-    }
+    customData: { height3dPx: hPx||0, deviceKey: deviceKey }
   });
-
-  const rect = new Konva.Rect({
-    width: wPx, height: dPx, fill, stroke,
-    name: 'main-rect',
-    dash: type === 'zone' ? [10,5] : []
-  });
-
-  const title = new Konva.Text({
-    text: name, fontSize: 14, fill: stroke,
-    padding: 8, name: 'title-text'
-  });
-
-  const dim = new Konva.Text({
-    text: '', fontSize: 10, fill: stroke, name: 'dim-label'
-  });
-
-  group.add(rect, title, dim);
+  const rect = new Konva.Rect({ width:wPx, height:dPx, fill, stroke, name:'main-rect', dash: type==='zone' ? [10,5] : [] });
+  const title = new Konva.Text({ text:name, fontSize:14, fill:stroke, padding:8, name:'title-text' });
+  const dim = new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
+  group.add(rect,title,dim);
   updateUI(group);
 
   group.on('dragmove', () => {
-    if(snapEnabled) group.position({ x: snapPx(group.x()), y: snapPx(group.y()) });
+    if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
     constrainToRoom(group);
     updateUI(group);
     scheduleAutosave();
   });
   group.on('dragend', () => scheduleAutosave());
-
   group.on('transform', () => { updateUI(group); scheduleAutosave(); });
   group.on('transformend', () => {
     if(snapEnabled) normalizeGroupToGrid(group);
@@ -451,215 +372,135 @@ function createNode(type, name, wPx, dPx, hPx, fill, stroke, deviceKey){
     scheduleAutosave();
     if(is3DVisible()) update3D();
   });
-
   group.on('click tap', (e) => {
     e.cancelBubble = true;
     const multi = e.evt && e.evt.shiftKey;
-    if(multi) toggleSelectNode(group);
-    else selectSingleNode(group);
+    if(multi) toggleSelectNode(group); else selectSingleNode(group);
   });
 
   layer.add(group);
-  if(type === 'zone') group.moveToBottom();
-
+  if(type==='zone') group.moveToBottom();
   selectSingleNode(group);
   layer.draw();
-
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
-
 function normalizeGroupToGrid(group){
-  group.x(snapPx(group.x()));
-  group.y(snapPx(group.y()));
-
+  group.x(snapPx(group.x())); group.y(snapPx(group.y()));
   const rect = group.findOne('.main-rect');
-  const absW = rect.width() * group.scaleX();
-  const absH = rect.height() * group.scaleY();
-
+  const absW = rect.width()*group.scaleX();
+  const absH = rect.height()*group.scaleY();
   const targetW = Math.max(GRID_PX, snapPx(absW));
   const targetH = Math.max(GRID_PX, snapPx(absH));
-
-  group.scaleX(targetW / rect.width());
-  group.scaleY(targetH / rect.height());
+  group.scaleX(targetW/rect.width());
+  group.scaleY(targetH/rect.height());
 }
-
 function constrainToRoom(group){
   if(!roomRect2D) return;
   const rr = getRoomRectPx();
-
   const r = group.findOne('.main-rect');
-  const w = r.width() * group.scaleX();
-  const h = r.height() * group.scaleY();
-
-  let x = group.x();
-  let y = group.y();
-
-  x = clamp(x, rr.x, rr.x + rr.width - w);
-  y = clamp(y, rr.y, rr.y + rr.height - h);
-
-  group.position({ x, y });
+  const w = r.width()*group.scaleX();
+  const h = r.height()*group.scaleY();
+  let x = clamp(group.x(), rr.x, rr.x + rr.width - w);
+  let y = clamp(group.y(), rr.y, rr.y + rr.height - h);
+  group.position({x,y});
 }
-
 function updateUI(group){
   const rect = group.findOne('.main-rect');
   const dim = group.findOne('.dim-label');
-  const wPx = rect.width() * group.scaleX();
-  const dPx = rect.height() * group.scaleY();
-
+  const wPx = rect.width()*group.scaleX();
+  const dPx = rect.height()*group.scaleY();
   dim.text(`${fmtMm(pxToMm(wPx))} x ${fmtMm(pxToMm(dPx))}`);
   dim.x(rect.width() - dim.width() - 5);
   dim.y(rect.height() - 15);
-
   if(selectedNodes.includes(group)) renderInspector();
 }
 
-/* ===========================
- * Selection model
- * =========================== */
+/* selection model */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
   sync3DSelectionHighlight();
 }
-
 function clearSelection(){
-  selectedNodes = [];
-  selectedNode = null;
+  selectedNodes=[]; selectedNode=null;
   applyTransformer();
   renderInspector();
 }
-
 function selectSingleNode(node){
-  selectedNodes = [node];
-  selectedNode = node;
-  applyTransformer();
-  renderInspector();
+  selectedNodes=[node]; selectedNode=node;
+  applyTransformer(); renderInspector();
 }
-
 function toggleSelectNode(node){
   const idx = selectedNodes.indexOf(node);
-  if(idx >= 0) selectedNodes.splice(idx, 1);
-  else selectedNodes.push(node);
-
-  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-  applyTransformer();
-  renderInspector();
+  if(idx>=0) selectedNodes.splice(idx,1); else selectedNodes.push(node);
+  selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
+  applyTransformer(); renderInspector();
 }
-
-stage.on('click tap', (e) => {
-  if(e.target === stage){
-    clearSelection();
-    if(is3DVisible()) update3D();
-  }
-});
-
+stage.on('click tap', (e) => { if(e.target===stage){ clearSelection(); if(is3DVisible()) update3D(); }});
 stage.on('mousedown touchstart', (e) => {
   if(is3DVisible()) return;
-  if(e.target !== stage) return;
-  if(e.evt && (e.evt.button !== undefined) && e.evt.button !== 0) return;
-
-  selecting = true;
+  if(e.target!==stage) return;
+  if(e.evt && (e.evt.button!==undefined) && e.evt.button!==0) return;
+  selecting=true;
   startPos = stage.getPointerPosition();
   selectionRect.visible(true);
   selectionRect.position(startPos);
-  selectionRect.size({ width: 0, height: 0 });
+  selectionRect.size({width:0,height:0});
   layer.draw();
 });
-
 stage.on('mousemove touchmove', () => {
   if(!selecting) return;
-  const pos = stage.getPointerPosition();
-  if(!pos) return;
-
-  const x = Math.min(startPos.x, pos.x);
-  const y = Math.min(startPos.y, pos.y);
-  const w = Math.abs(pos.x - startPos.x);
-  const h = Math.abs(pos.y - startPos.y);
-
-  selectionRect.setAttrs({ x, y, width: w, height: h });
+  const pos = stage.getPointerPosition(); if(!pos) return;
+  const x = Math.min(startPos.x,pos.x);
+  const y = Math.min(startPos.y,pos.y);
+  const w = Math.abs(pos.x-startPos.x);
+  const h = Math.abs(pos.y-startPos.y);
+  selectionRect.setAttrs({x,y,width:w,height:h});
   layer.batchDraw();
 });
-
 stage.on('mouseup touchend', (e) => {
   if(!selecting) return;
-  selecting = false;
-
+  selecting=false;
   selectionRect.visible(false);
   layer.draw();
-
   const box = selectionRect.getClientRect();
-  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
   const additive = e.evt && e.evt.shiftKey;
-
   const hits = groups.filter(g => Konva.Util.haveIntersection(box, g.getClientRect()));
-  if(!additive) selectedNodes = [];
+  if(!additive) selectedNodes=[];
   hits.forEach(g => { if(!selectedNodes.includes(g)) selectedNodes.push(g); });
-
-  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
-  applyTransformer();
-  renderInspector();
+  selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
+  applyTransformer(); renderInspector();
   if(is3DVisible()) update3D();
 });
 
-/* ===========================
- * Inspector rendering
- * =========================== */
+/* inspector */
 function renderInspector(mode){
   const container = document.getElementById('inspector-content');
 
   if(mode === 'room'){
     container.innerHTML = `
       <div class="chip">矩形房間設定</div>
-
       <div class="prop-grid" style="margin-top:12px;">
-        <div class="prop-group">
-          <label class="prop-label">寬度 (mm)</label>
-          <input type="number" value="${ROOM.widthMm}" oninput="updateRoom('widthMm', this.value)">
-        </div>
-        <div class="prop-group">
-          <label class="prop-label">長度 (mm)</label>
-          <input type="number" value="${ROOM.depthMm}" oninput="updateRoom('depthMm', this.value)">
-        </div>
-        <div class="prop-group">
-          <label class="prop-label">牆高 (mm)</label>
-          <input type="number" value="${ROOM.wallHeightMm}" oninput="updateRoom('wallHeightMm', this.value)">
-        </div>
-        <div class="prop-group">
-          <label class="prop-label">牆厚 (mm)</label>
-          <input type="number" value="${ROOM.wallThicknessMm}" disabled>
-        </div>
+        <div class="prop-group"><label class="prop-label">寬度 (mm)</label><input type="number" value="${ROOM.widthMm}" oninput="updateRoom('widthMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">長度 (mm)</label><input type="number" value="${ROOM.depthMm}" oninput="updateRoom('depthMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">牆高 (mm)</label><input type="number" value="${ROOM.wallHeightMm}" oninput="updateRoom('wallHeightMm', this.value)"></div>
+        <div class="prop-group"><label class="prop-label">牆厚 (mm)</label><input type="number" value="${ROOM.wallThicknessMm}" disabled></div>
       </div>
-
-      <div class="hint" style="margin-top:10px;">
-        房間會在 2D 顯示邊界，物件拖曳會限制在房間內。<br/>
-        3D 會生成地板與四面牆。
-      </div>
-
+      <div class="hint" style="margin-top:10px;">3D 會生成地板與四面牆。</div>
       <button class="btn-action" style="background:#334155" onclick="toast('已套用房間設定');">完成</button>
     `;
     return;
   }
 
   if(selectedNodes.length === 0){
-    container.innerHTML = `
-      <div class="chip">請選擇物件</div>
-      <div class="hint">提示：左鍵拖曳空白處可框選，Shift 可多選。</div>
-    `;
+    container.innerHTML = `<div class="chip">請選擇物件</div><div class="hint">左鍵拖曳空白處可框選，Shift 可多選。</div>`;
     return;
   }
-
   if(selectedNodes.length > 1){
     container.innerHTML = `
       <div class="chip">已選取：${selectedNodes.length} 個物件</div>
-      <div class="toggle">
-        <div><div class="prop-label">格線</div><div style="font-size:12px;color:#94a3b8;">格距：10cm</div></div>
-        <input type="checkbox" ${gridVisible ? 'checked' : ''} onchange="toggleGrid()">
-      </div>
-      <div class="toggle">
-        <div><div class="prop-label">吸附</div><div style="font-size:12px;color:#94a3b8;">對齊格線</div></div>
-        <input type="checkbox" ${snapEnabled ? 'checked' : ''} onchange="toggleSnap()">
-      </div>
       <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取 (${selectedNodes.length})</button>
     `;
     return;
@@ -667,21 +508,17 @@ function renderInspector(mode){
 
   const n = selectedNodes[0];
   const r = n.findOne('.main-rect');
-  const wPx = r.width() * n.scaleX();
-  const dPx = r.height() * n.scaleY();
+  const wPx = r.width()*n.scaleX();
+  const dPx = r.height()*n.scaleY();
   const hPx = n.attrs.customData?.height3dPx || 0;
-
   const key = n.attrs.customData?.deviceKey || n.name();
-  const sizeText = `${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}`;
 
   container.innerHTML = `
-    <div class="chip">已選取：1 個物件（Shift 可多選）</div>
-
+    <div class="chip">已選取：1 個物件</div>
     <div class="prop-row" style="margin-top:12px;">
       <label class="prop-label">名稱</label>
-      <input type="text" value="${n.findOne('.title-text').text()}" oninput="updateProp('name', this.value)">
+      <input type="text" value="${escapeHtml(n.findOne('.title-text').text())}" oninput="updateProp('name', this.value)">
     </div>
-
     <div class="prop-grid">
       <div class="prop-group"><label class="prop-label">X (mm)</label><input type="number" value="${pxToMm(n.x())}" oninput="updateProp('xMm', this.value)"></div>
       <div class="prop-group"><label class="prop-label">Y (mm)</label><input type="number" value="${pxToMm(n.y())}" oninput="updateProp('yMm', this.value)"></div>
@@ -690,43 +527,35 @@ function renderInspector(mode){
       <div class="prop-group"><label class="prop-label">旋轉 (deg)</label><input type="number" value="${Math.round(n.rotation())}" oninput="updateProp('rot', this.value)"></div>
       <div class="prop-group"><label class="prop-label">高度 (mm)</label><input type="number" value="${pxToMm(hPx)}" oninput="updateProp('hMm', this.value)"></div>
     </div>
-
-    <div class="hint">
-      類別：<b>${key}</b><br/>
-      尺寸：<b>${sizeText}</b> / 擺放高度：<b>${fmtCm(pxToMm(hPx))}</b>
-    </div>
-
+    <div class="hint">類別：<b>${escapeHtml(key)}</b><br/>尺寸：<b>${fmtMm(pxToMm(wPx))}×${fmtMm(pxToMm(dPx))}</b> / 擺放高度：<b>${fmtCm(pxToMm(hPx))}</b></div>
     <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
   `;
 }
-
 function updateRoom(p, v){
-  const mm = Math.max(1000, safeInt(v, ROOM[p])); // minimum 1m
+  const mm = Math.max(1000, safeInt(v, ROOM[p]));
   ROOM[p] = mm;
   drawGrid();
   drawRoomBoundary2D();
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
-
 function updateProp(p, v){
   if(selectedNodes.length !== 1) return;
   const node = selectedNodes[0];
 
-  if(p === 'name') node.findOne('.title-text').text(v);
+  if(p==='name') node.findOne('.title-text').text(v);
 
-  if(p === 'xMm') node.x(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
-  if(p === 'yMm') node.y(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
+  if(p==='xMm') node.x(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
+  if(p==='yMm') node.y(snapEnabled ? snapPx(mmToPx(safeInt(v))) : mmToPx(safeInt(v)));
 
-  if(p === 'wMm'){
+  if(p==='wMm'){
     const rect = node.findOne('.main-rect');
     const baseW = rect.width();
     let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseW))));
     if(snapEnabled) targetPx = Math.max(GRID_PX, snapPx(targetPx));
     node.scaleX(targetPx / baseW);
   }
-
-  if(p === 'dMm'){
+  if(p==='dMm'){
     const rect = node.findOne('.main-rect');
     const baseH = rect.height();
     let targetPx = mmToPx(Math.max(100, safeInt(v, pxToMm(baseH))));
@@ -734,68 +563,52 @@ function updateProp(p, v){
     node.scaleY(targetPx / baseH);
   }
 
-  if(p === 'rot') node.rotation(safeInt(v));
-  if(p === 'hMm') node.attrs.customData.height3dPx = mmToPx(Math.max(0, safeInt(v)));
+  if(p==='rot') node.rotation(safeInt(v));
+  if(p==='hMm') node.attrs.customData.height3dPx = mmToPx(Math.max(0, safeInt(v)));
 
   if(snapEnabled) normalizeGroupToGrid(node);
   constrainToRoom(node);
-
   updateUI(node);
   layer.draw();
-
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
 
-/* ===========================
- * Delete / Export
- * =========================== */
+/* delete/export */
 function deleteSelected(){
-  if(selectedNodes.length === 0) return;
-
+  if(selectedNodes.length===0) return;
   selectedNodes.forEach(n => n.destroy());
-  selectedNodes = [];
-  selectedNode = null;
-  tr.nodes([]);
-  renderInspector();
+  clearSelection();
   layer.draw();
-
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
-
 function exportImg(f){
-  tr.nodes([]);
-  layer.draw();
-
-  if(f === 'png'){
-    const l = document.createElement('a');
-    l.download = 'lab.png';
-    l.href = stage.toDataURL();
-    l.click();
+  tr.nodes([]); layer.draw();
+  if(f==='png'){
+    const a=document.createElement('a');
+    a.download='lab.png';
+    a.href=stage.toDataURL();
+    a.click();
   }else{
-    const doc = new jspdf.jsPDF('l', 'px', [stage.width(), stage.height()]);
-    doc.addImage(stage.toDataURL(), 'PNG', 0, 0, stage.width(), stage.height());
+    const doc=new jspdf.jsPDF('l','px',[stage.width(), stage.height()]);
+    doc.addImage(stage.toDataURL(), 'PNG', 0,0, stage.width(), stage.height());
     doc.save('lab.pdf');
   }
 }
 
-/* ===========================
- * Save/Load
- * =========================== */
-const STORAGE_KEY = 'labcad_design_v1';
-let autosaveTimer = null;
-
+/* save/load */
+const STORAGE_KEY='labcad_design_v1';
+let autosaveTimer=null;
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => saveDesignToLocalStorage(), 150);
+  autosaveTimer=setTimeout(() => saveDesignToLocalStorage(), 150);
 }
-
 function serializeNode(group){
   const r = group.findOne('.main-rect');
   const title = group.findOne('.title-text');
-  const wPx = r.width() * group.scaleX();
-  const dPx = r.height() * group.scaleY();
+  const wPx = r.width()*group.scaleX();
+  const dPx = r.height()*group.scaleY();
   const hPx = group.attrs.customData?.height3dPx || 0;
 
   return {
@@ -813,14 +626,13 @@ function serializeNode(group){
     hMm: pxToMm(hPx)
   };
 }
-
 function getDesignJSON(){
   const nodes = layer.getChildren()
-    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
+    .filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'))
     .map(serializeNode);
 
   return {
-    version: 5,
+    version: 6,
     savedAt: new Date().toISOString(),
     units: { gridPx: GRID_PX, mmPerGrid: MM_PER_GRID },
     room: { ...ROOM },
@@ -828,37 +640,22 @@ function getDesignJSON(){
     nodes
   };
 }
-
 function saveDesignToLocalStorage(){
-  try{
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON()));
-  }catch(err){
-    console.error(err);
-    toast('自動保存失敗（localStorage）');
-  }
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(getDesignJSON())); }
+  catch(err){ console.error(err); toast('自動保存失敗（localStorage）'); }
 }
-
 function resetDesign(alsoClearLocalStorage=false){
-  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
   groups.forEach(g => g.destroy());
   selectionRect.visible(false);
-
   clearSelection();
   layer.draw();
-
-  if(alsoClearLocalStorage){
-    localStorage.removeItem(STORAGE_KEY);
-    toast('已清空設計');
-  }else{
-    scheduleAutosave();
-  }
-
+  if(alsoClearLocalStorage){ localStorage.removeItem(STORAGE_KEY); toast('已清空設計'); }
+  else scheduleAutosave();
   if(is3DVisible()) update3D();
 }
-
 function loadDesignFromObject(design){
   if(!design || !Array.isArray(design.nodes)) throw new Error('Invalid design format');
-
   resetDesign(false);
 
   if(design.room){
@@ -876,44 +673,31 @@ function loadDesignFromObject(design){
     const type = n.type === 'zone' ? 'zone' : 'device';
     const stroke = n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
     const dash = Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
-    const fill = n.fill || (type==='zone' ? 'rgba(59, 130, 246, 0.1)' : '#3b82f6');
+    const fill = n.fill || (type==='zone' ? 'rgba(59,130,246,0.1)' : '#3b82f6');
 
     const group = new Konva.Group({
       x: mmToPx(Number(n.xMm) || 0),
       y: mmToPx(Number(n.yMm) || 0),
       draggable: true,
       name: type,
-      customData: {
-        height3dPx: mmToPx(Number(n.hMm) || 0),
-        deviceKey: n.key || (type==='zone' ? 'zone' : 'device')
-      }
+      customData: { height3dPx: mmToPx(Number(n.hMm)||0), deviceKey: n.key || (type==='zone'?'zone':'device') }
     });
 
     const rect = new Konva.Rect({
       width: mmToPx(Math.max(100, Number(n.wMm) || 1000)),
       height: mmToPx(Math.max(100, Number(n.dMm) || 1000)),
-      fill,
-      stroke,
-      name: 'main-rect',
-      dash
+      fill, stroke, name:'main-rect', dash
     });
 
-    const title = new Konva.Text({
-      text: n.name || '',
-      fontSize: 14,
-      fill: stroke,
-      padding: 8,
-      name: 'title-text'
-    });
+    const title = new Konva.Text({ text:n.name || '', fontSize:14, fill:stroke, padding:8, name:'title-text' });
+    const dim = new Konva.Text({ text:'', fontSize:10, fill:stroke, name:'dim-label' });
 
-    const dim = new Konva.Text({ text: '', fontSize: 10, fill: stroke, name: 'dim-label' });
-
-    group.rotation(Number(n.rot) || 0);
-    group.add(rect, title, dim);
+    group.rotation(Number(n.rot)||0);
+    group.add(rect,title,dim);
     updateUI(group);
 
     group.on('dragmove', () => {
-      if(snapEnabled) group.position({ x: snapPx(group.x()), y: snapPx(group.y()) });
+      if(snapEnabled) group.position({ x:snapPx(group.x()), y:snapPx(group.y()) });
       constrainToRoom(group);
       updateUI(group);
       scheduleAutosave();
@@ -929,84 +713,302 @@ function loadDesignFromObject(design){
     group.on('click tap', (e) => {
       e.cancelBubble = true;
       const multi = e.evt && e.evt.shiftKey;
-      if(multi) toggleSelectNode(group);
-      else selectSingleNode(group);
+      if(multi) toggleSelectNode(group); else selectSingleNode(group);
     });
 
     layer.add(group);
-    if(type === 'zone') group.moveToBottom();
+    if(type==='zone') group.moveToBottom();
   });
 
   drawGrid();
   drawRoomBoundary2D();
   layer.draw();
-
   scheduleAutosave();
   if(is3DVisible()) update3D();
-
   toast('已載入設計');
 }
-
 function tryLoadFromLocalStorage(){
   const raw = localStorage.getItem(STORAGE_KEY);
   if(!raw) return;
-  try{
-    loadDesignFromObject(JSON.parse(raw));
-    toast('已從自動保存載入');
-  }catch(err){
-    console.warn('Failed to load autosave:', err);
-  }
+  try{ loadDesignFromObject(JSON.parse(raw)); toast('已從自動保存載入'); }
+  catch(err){ console.warn('Failed to load autosave:', err); }
 }
-
 function downloadText(filename, text, mime='application/json'){
   const blob = new Blob([text], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
+  a.href = url; a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-
-function exportDesignJSON(){
-  downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2));
-  toast('已匯出 JSON');
-}
-
+function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
 function triggerImportJSON(){ document.getElementById('import-json-input').click(); }
-
 document.getElementById('import-json-input').addEventListener('change', (e) => {
   const file = e.target.files && e.target.files[0];
   if(!file) return;
-
   const reader = new FileReader();
   reader.onload = () => {
-    try{
-      loadDesignFromObject(JSON.parse(reader.result));
-      toast('已匯入 JSON');
-    }catch(err){
-      console.error(err);
-      toast('匯入失敗：JSON 格式不正確');
-    }finally{
-      e.target.value = '';
-    }
+    try{ loadDesignFromObject(JSON.parse(reader.result)); toast('已匯入 JSON'); }
+    catch(err){ console.error(err); toast('匯入失敗：JSON 格式不正確'); }
+    finally{ e.target.value=''; }
   };
   reader.readAsText(file);
 });
 
 /* ===========================
- * 3D Engine (Raycaster + info card + room)
+ * 3D Prefab builder (Stage 6 v1)
+ * =========================== */
+function matStandard(hex, opts={}){
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color(hex),
+    roughness: opts.roughness ?? 0.65,
+    metalness: opts.metalness ?? 0.05,
+    transparent: !!opts.transparent,
+    opacity: opts.opacity ?? 1
+  });
+}
+function matEmissive(hex, emissiveHex, intensity){
+  const m = matStandard(hex, { roughness:0.55, metalness:0.08 });
+  m.emissive = new THREE.Color(emissiveHex);
+  m.emissiveIntensity = intensity;
+  return m;
+}
+function addEdges(root, geometry, color=0x94a3b8, opacity=0.35){
+  const e = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geometry),
+    new THREE.LineBasicMaterial({ color, transparent:true, opacity })
+  );
+  root.add(e);
+  return e;
+}
+function addHandle(root, x, y, z, len, vertical=true){
+  const geo = new THREE.CylinderGeometry(8, 8, len, 10);
+  const mat = matStandard('#cbd5e1', { roughness:0.35, metalness:0.55 });
+  const m = new THREE.Mesh(geo, mat);
+  if(vertical){
+    // cylinder default Y axis -> vertical already
+  }else{
+    m.rotation.z = Math.PI/2;
+  }
+  m.position.set(x,y,z);
+  m.castShadow = true;
+  root.add(m);
+}
+function addPanel(root, x, y, z, w, h){
+  const geo = new THREE.BoxGeometry(w, h, 6);
+  const mat = matEmissive('#1f2937', '#60a5fa', 0.65);
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(x,y,z);
+  m.castShadow = false;
+  root.add(m);
+}
+function buildBench(w, d, h, baseColor){
+  const root = new THREE.Group();
+  // top board
+  const topGeo = new THREE.BoxGeometry(w, 40, d);
+  const top = new THREE.Mesh(topGeo, matStandard('#e5e7eb', { roughness:0.85, metalness:0.02 }));
+  top.position.set(0, h - 20, 0);
+  top.castShadow = true; top.receiveShadow = true;
+  root.add(top);
+  addEdges(root, topGeo, 0x64748b, 0.25);
+
+  // legs
+  const legGeo = new THREE.BoxGeometry(30, h - 60, 30);
+  const legMat = matStandard('#334155', { roughness:0.9, metalness:0.05 });
+  const offsets = [
+    [-w/2+25, (h-60)/2, -d/2+25],
+    [ w/2-25, (h-60)/2, -d/2+25],
+    [-w/2+25, (h-60)/2,  d/2-25],
+    [ w/2-25, (h-60)/2,  d/2-25],
+  ];
+  offsets.forEach(([x,y,z]) => {
+    const leg = new THREE.Mesh(legGeo, legMat);
+    leg.position.set(x,y,z);
+    leg.castShadow = true;
+    root.add(leg);
+  });
+
+  // modesty frame
+  const frameGeo = new THREE.BoxGeometry(w-40, 20, 20);
+  const frame = new THREE.Mesh(frameGeo, legMat);
+  frame.position.set(0, 120, -d/2 + 20);
+  frame.castShadow = true;
+  root.add(frame);
+
+  return { root, mainMesh: top };
+}
+function buildCabinet(w, d, h, bodyColor, opts={}){
+  const root = new THREE.Group();
+  const bodyGeo = new THREE.BoxGeometry(w, h, d);
+  const bodyMat = matStandard(bodyColor, { roughness:0.7, metalness:0.05 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.castShadow = true; body.receiveShadow = true;
+  root.add(body);
+  addEdges(root, bodyGeo, 0x94a3b8, 0.28);
+
+  // door line (front)
+  const lineGeo = new THREE.BoxGeometry(w*0.92, h*0.9, 2);
+  const lineMat = matStandard('#0b1220', { roughness:1.0, metalness:0.0 });
+  const line = new THREE.Mesh(lineGeo, lineMat);
+  line.position.set(0, 0, d/2 + 1);
+  line.castShadow = false;
+  root.add(line);
+
+  // handle
+  addHandle(root, w/2 - 35, 0, d/2 + 10, h*0.45, true);
+
+  // top panel
+  if(opts.panel){
+    addPanel(root, 0, h/2 - 90, d/2 + 8, w*0.45, 70);
+  }
+
+  // base feet
+  const footGeo = new THREE.CylinderGeometry(10, 10, 18, 10);
+  const footMat = matStandard('#0f172a', { roughness:0.9, metalness:0.1 });
+  const corners = [
+    [-w/2+22, -h/2+10, -d/2+22],
+    [ w/2-22, -h/2+10, -d/2+22],
+    [-w/2+22, -h/2+10,  d/2-22],
+    [ w/2-22, -h/2+10,  d/2-22],
+  ];
+  corners.forEach(([x,y,z]) => {
+    const f = new THREE.Mesh(footGeo, footMat);
+    f.position.set(x, y, z);
+    f.castShadow = true;
+    root.add(f);
+  });
+
+  return { root, mainMesh: body };
+}
+function buildCentrifuge(w,d,h,color){
+  const root = new THREE.Group();
+  // base
+  const baseGeo = new THREE.BoxGeometry(w, h*0.55, d);
+  const base = new THREE.Mesh(baseGeo, matStandard('#e5e7eb', { roughness:0.75 }));
+  base.position.set(0, -h*0.225, 0);
+  base.castShadow=true; base.receiveShadow=true;
+  root.add(base);
+  addEdges(root, baseGeo, 0x64748b, 0.25);
+
+  // lid (cylinder)
+  const lidGeo = new THREE.CylinderGeometry(Math.min(w,d)*0.38, Math.min(w,d)*0.38, h*0.28, 24);
+  const lid = new THREE.Mesh(lidGeo, matStandard('#cbd5e1', { roughness:0.55 }));
+  lid.position.set(0, h*0.12, 0);
+  lid.castShadow=true;
+  root.add(lid);
+
+  // panel
+  addPanel(root, w*0.22, 0, d/2 + 8, w*0.35, h*0.22);
+
+  return { root, mainMesh: base };
+}
+function buildSink(w,d,h,color){
+  const root = new THREE.Group();
+  // counter
+  const topGeo = new THREE.BoxGeometry(w, 40, d);
+  const top = new THREE.Mesh(topGeo, matStandard('#e5e7eb', { roughness:0.85 }));
+  top.position.set(0, h - 20, 0);
+  top.castShadow=true; top.receiveShadow=true;
+  root.add(top);
+  addEdges(root, topGeo, 0x64748b, 0.25);
+
+  // basin (slightly darker inset)
+  const basinGeo = new THREE.BoxGeometry(w*0.55, 20, d*0.45);
+  const basin = new THREE.Mesh(basinGeo, matStandard('#cbd5e1', { roughness:0.55, metalness:0.25 }));
+  basin.position.set(-w*0.08, h - 30, 0);
+  basin.castShadow=true; basin.receiveShadow=true;
+  root.add(basin);
+
+  // faucet
+  const postGeo = new THREE.CylinderGeometry(10, 10, 120, 14);
+  const post = new THREE.Mesh(postGeo, matStandard('#94a3b8', { roughness:0.35, metalness:0.6 }));
+  post.position.set(w*0.2, h + 30, 0);
+  post.castShadow=true;
+  root.add(post);
+
+  const spoutGeo = new THREE.CylinderGeometry(8, 8, 120, 14);
+  const spout = new THREE.Mesh(spoutGeo, post.material);
+  spout.rotation.z = Math.PI/2;
+  spout.position.set(w*0.2 + 55, h + 70, 0);
+  spout.castShadow=true;
+  root.add(spout);
+
+  // cabinet base
+  const cabGeo = new THREE.BoxGeometry(w*0.92, h-60, d*0.92);
+  const cab = new THREE.Mesh(cabGeo, matStandard('#f8fafc', { roughness:0.85 }));
+  cab.position.set(0, (h-60)/2, 0);
+  cab.castShadow=true; cab.receiveShadow=true;
+  root.add(cab);
+
+  // handle
+  addHandle(root, w*0.35, (h-60)/2, d/2 + 8, (h-60)*0.35, true);
+
+  return { root, mainMesh: top };
+}
+function buildHood(w,d,h,color){
+  const root = new THREE.Group();
+  // body
+  const bodyGeo = new THREE.BoxGeometry(w, h, d);
+  const body = new THREE.Mesh(bodyGeo, matStandard('#e5e7eb', { roughness:0.85 }));
+  body.castShadow=true; body.receiveShadow=true;
+  root.add(body);
+  addEdges(root, bodyGeo, 0x94a3b8, 0.28);
+
+  // front glass
+  const glassGeo = new THREE.BoxGeometry(w*0.9, h*0.55, 6);
+  const glassMat = matStandard('#93c5fd', { transparent:true, opacity:0.22, roughness:0.2, metalness:0.0 });
+  const glass = new THREE.Mesh(glassGeo, glassMat);
+  glass.position.set(0, h*0.05, d/2 + 4);
+  glass.castShadow=false; glass.receiveShadow=false;
+  root.add(glass);
+
+  // top panel
+  addPanel(root, 0, h/2 - 120, d/2 + 8, w*0.55, 80);
+
+  // base plinth
+  const baseGeo = new THREE.BoxGeometry(w, 40, d);
+  const base = new THREE.Mesh(baseGeo, matStandard('#94a3b8', { roughness:0.9, metalness:0.05 }));
+  base.position.set(0, -h/2 + 20, 0);
+  base.castShadow=true;
+  root.add(base);
+
+  return { root, mainMesh: body };
+}
+function buildIncubator(w,d,h,color){
+  // like cabinet + glass door
+  const { root, mainMesh } = buildCabinet(w,d,h,'#f8fafc',{ panel:true });
+  // glass door overlay
+  const glassGeo = new THREE.BoxGeometry(w*0.85, h*0.75, 6);
+  const glassMat = matStandard('#93c5fd', { transparent:true, opacity:0.18, roughness:0.1, metalness:0.0 });
+  const glass = new THREE.Mesh(glassGeo, glassMat);
+  glass.position.set(0, 0, d/2 + 5);
+  root.add(glass);
+  return { root, mainMesh };
+}
+function buildPrefab(deviceKey, w, d, h, color){
+  // w,d,h are in px world units in our app (mapped from mm)
+  switch(deviceKey){
+    case 'bench': return buildBench(w,d,mmToPx(800), color);
+    case 'fridge': return buildCabinet(w,d,h,'#f8fafc',{ panel:true });
+    case 'ultra_low_freezer': return buildCabinet(w,d,h,'#e2e8f0',{ panel:true });
+    case 'incubator': return buildIncubator(w,d,h,color);
+    case 'centrifuge': return buildCentrifuge(w,d,h,color);
+    case 'sink': return buildSink(w,d,mmToPx(900),color);
+    case 'hood': return buildHood(w,d,h,color);
+    default: return buildCabinet(w,d,h,'#e5e7eb',{ panel:false });
+  }
+}
+
+/* ===========================
+ * 3D Engine (same as stage 5, but device mesh uses prefabs)
  * =========================== */
 let sc, cam, rend, ctrl;
-let objectsGroup;
-let groundMesh;
-let dirLight;
-let roomGroup3D;
+let objectsGroup, roomGroup3D, groundMesh, dirLight;
 
-const threeMap = new Map(); // konvaId -> { root, mesh, edges, ... }
-const pickables = [];       // meshes used for raycasting
+const threeMap = new Map(); // konvaId -> { root, pickMesh, edgesGroup?, baseMats, hiMats ... }
+const pickables = [];
 
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -1015,12 +1017,10 @@ function is3DVisible(){
   const c3d = document.getElementById('three-container');
   return c3d && c3d.style.display === 'block';
 }
-
 function get3DSize(){
   const c3d = document.getElementById('three-container');
   return { w: Math.max(1, c3d.clientWidth || 0), h: Math.max(1, c3d.clientHeight || 0) };
 }
-
 function resize3D(){
   if(!rend || !cam) return;
   const { w, h } = get3DSize();
@@ -1030,7 +1030,6 @@ function resize3D(){
   cam.updateProjectionMatrix();
   updateDebug3D();
 }
-
 function init3DIfNeeded(){
   const c3d = document.getElementById('three-container');
   if(sc) return;
@@ -1082,14 +1081,11 @@ function init3DIfNeeded(){
   sc.add(new THREE.AxesHelper(200));
 
   roomGroup3D = new THREE.Group();
-  roomGroup3D.name = 'roomGroup3D';
   sc.add(roomGroup3D);
 
   objectsGroup = new THREE.Group();
-  objectsGroup.name = 'objectsGroup';
   sc.add(objectsGroup);
 
-  // raycaster events
   rend.domElement.addEventListener('pointerdown', onPointerDown3D);
 
   updateDebug3D();
@@ -1102,13 +1098,11 @@ function toggle3D(){
   const debug = document.getElementById('debug3d');
 
   const opening = (c3d.style.display === 'none' || c3d.style.display === '');
-
   if(opening){
     c3d.style.display = 'block';
     c2d.style.display = 'none';
     btn.innerText = '返回 2D';
     if(debug) debug.style.display = 'block';
-
     requestAnimationFrame(() => {
       init3DIfNeeded();
       resize3D();
@@ -1132,10 +1126,9 @@ function disposeObject(obj){
     else if(obj.material.dispose) obj.material.dispose();
   }
 }
-
 function clearGroup(group){
   if(!group) return;
-  for(let i = group.children.length - 1; i >= 0; i--){
+  for(let i=group.children.length-1; i>=0; i--){
     const child = group.children[i];
     child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
     group.remove(child);
@@ -1150,9 +1143,6 @@ function buildRoom3D(){
   const wallH = mmToPx(ROOM.wallHeightMm);
   const t = mmToPx(ROOM.wallThicknessMm);
 
-  // 3D coordinates: x horizontal, z depth, y up.
-  // Place room centered at (0,0,0) on ground y=0, walls from y=0..wallH
-
   const wallMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.9, metalness: 0.0 });
   const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95, metalness: 0.0 });
 
@@ -1161,33 +1151,22 @@ function buildRoom3D(){
   floor.receiveShadow = true;
   roomGroup3D.add(floor);
 
-  // 4 walls
   const wallGeo1 = new THREE.BoxGeometry(w, wallH, t);
   const wallGeo2 = new THREE.BoxGeometry(t, wallH, d);
 
-  const wallN = new THREE.Mesh(wallGeo1, wallMat);
-  wallN.position.set(0, wallH/2, -d/2);
-  wallN.castShadow = true; wallN.receiveShadow = true;
+  const wallN = new THREE.Mesh(wallGeo1, wallMat); wallN.position.set(0, wallH/2, -d/2);
+  const wallS = new THREE.Mesh(wallGeo1, wallMat); wallS.position.set(0, wallH/2, d/2);
+  const wallW = new THREE.Mesh(wallGeo2, wallMat); wallW.position.set(-w/2, wallH/2, 0);
+  const wallE = new THREE.Mesh(wallGeo2, wallMat); wallE.position.set(w/2, wallH/2, 0);
 
-  const wallS = new THREE.Mesh(wallGeo1, wallMat);
-  wallS.position.set(0, wallH/2, d/2);
-
-  const wallW = new THREE.Mesh(wallGeo2, wallMat);
-  wallW.position.set(-w/2, wallH/2, 0);
-
-  const wallE = new THREE.Mesh(wallGeo2, wallMat);
-  wallE.position.set(w/2, wallH/2, 0);
-
-  [wallN, wallS, wallW, wallE].forEach(wm => { wm.castShadow = true; wm.receiveShadow = true; roomGroup3D.add(wm); });
+  [wallN, wallS, wallW, wallE].forEach(wm => { wm.castShadow=true; wm.receiveShadow=true; roomGroup3D.add(wm); });
 }
 
 function update3D(){
   if(!sc) return;
 
-  // rebuild room
   buildRoom3D();
 
-  // clear objects
   clearGroup(objectsGroup);
   threeMap.clear();
   pickables.length = 0;
@@ -1195,10 +1174,6 @@ function update3D(){
   const roomRect = getRoomRectPx();
   const roomWpx = mmToPx(ROOM.widthMm);
   const roomDpx = mmToPx(ROOM.depthMm);
-
-  // Map 2D px into 3D coords:
-  // room center -> 3D origin.
-  // x3d = (x2d - roomCenterX) + w/2 offset correction by object center etc
   const roomCenterX = roomRect.x + roomRect.width/2;
   const roomCenterY = roomRect.y + roomRect.height/2;
 
@@ -1220,36 +1195,57 @@ function update3D(){
     const key = n.attrs.customData?.deviceKey || n.name();
 
     if(n.name() === 'device'){
-      const baseMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(r.fill()),
-        roughness: 0.6,
-        metalness: 0.05
-      });
-      const hiMat = baseMat.clone();
-      hiMat.emissive = new THREE.Color(0x1d4ed8);
-      hiMat.emissiveIntensity = 0.35;
-
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(wPx, hPx, dPx), baseMat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.userData = { konvaId: id, kind: 'device' };
-
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(mesh.geometry),
-        new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.95 })
-      );
-      edges.visible = false;
-
-      const root = new THREE.Group();
-      root.add(mesh); root.add(edges);
-
-      root.position.set(x3d, hPx/2, z3d);
+      // Build prefab group
+      const prefab = buildPrefab(key, wPx, dPx, hPx, r.fill());
+      const root = prefab.root;
+      root.position.set(x3d, 0, z3d);
       root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
 
+      // place on ground (prefab is built centered, but some parts may sit above y=0; we ensure it sits on ground by moving up half height when needed)
+      // Our prefabs are mostly centered at y=0 for body or use absolute y offsets; keep as-is.
+
+      // Find a pick mesh:
+      // Use an invisible box as pick volume for reliable picking
+      const pickGeo = new THREE.BoxGeometry(wPx, hPx, dPx);
+      const pickMat = new THREE.MeshBasicMaterial({ transparent:true, opacity:0.0 });
+      const pickMesh = new THREE.Mesh(pickGeo, pickMat);
+      pickMesh.position.set(0, hPx/2, 0);
+      pickMesh.userData = { konvaId: id, kind: 'device' };
+      root.add(pickMesh);
+
+      // Enable shadows on all meshes inside prefab
+      root.traverse((obj) => {
+        if(obj.isMesh){
+          // don't shadow for pick mesh
+          if(obj === pickMesh) return;
+          obj.castShadow = true;
+          obj.receiveShadow = true;
+        }
+      });
+
+      // Highlight: we'll store meshes to swap emissive via material tweak (simpler: add outline edges on root)
+      const outline = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(wPx, hPx, dPx)),
+        new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent:true, opacity:0.95 })
+      );
+      outline.position.set(0, hPx/2, 0);
+      outline.visible = false;
+      root.add(outline);
+
       objectsGroup.add(root);
-      threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, key });
-      pickables.push(mesh);
+
+      threeMap.set(id, {
+        root,
+        pickMesh,
+        outline,
+        key,
+        // store list of "highlightable" meshes (exclude pick mesh)
+        highlightTargets: root.children.filter(c => c.isMesh && c !== pickMesh)
+      });
+      pickables.push(pickMesh);
+
     }else{
+      // zone plane
       const baseMat = new THREE.MeshStandardMaterial({
         color: 0x3b82f6,
         transparent: true,
@@ -1258,10 +1254,6 @@ function update3D(){
         metalness: 0.0,
         side: THREE.DoubleSide
       });
-      const hiMat = baseMat.clone();
-      hiMat.opacity = 0.28;
-      hiMat.emissive = new THREE.Color(0x1d4ed8);
-      hiMat.emissiveIntensity = 0.18;
 
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(wPx, dPx), baseMat);
       mesh.rotation.x = -Math.PI / 2;
@@ -1278,10 +1270,11 @@ function update3D(){
       edges.visible = false;
 
       const root = new THREE.Group();
-      root.add(mesh); root.add(edges);
+      root.add(mesh);
+      root.add(edges);
 
       objectsGroup.add(root);
-      threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, key: 'zone' });
+      threeMap.set(id, { root, pickMesh: mesh, outline: edges, key: 'zone', zoneMesh: mesh });
       pickables.push(mesh);
     }
   });
@@ -1296,8 +1289,25 @@ function sync3DSelectionHighlight(){
   const sel = new Set(selectedNodes.map(n => n._id));
   threeMap.forEach((obj, id) => {
     const selected = sel.has(id);
-    obj.mesh.material = selected ? obj.highlightMaterial : obj.baseMaterial;
-    obj.edges.visible = selected;
+
+    if(obj.zoneMesh){
+      obj.zoneMesh.material.opacity = selected ? 0.28 : 0.18;
+      obj.outline.visible = selected;
+      return;
+    }
+
+    // device: show outline + boost emissive on panel if exists
+    obj.outline.visible = selected;
+
+    obj.root.traverse((m) => {
+      if(!m.isMesh) return;
+      if(m === obj.pickMesh) return;
+      // mild emissive highlight for all meshes
+      if(m.material && m.material.emissive !== undefined){
+        m.material.emissive = selected ? new THREE.Color(0x1d4ed8) : new THREE.Color(0x000000);
+        m.material.emissiveIntensity = selected ? 0.10 : 0.0;
+      }
+    });
   });
 }
 
@@ -1338,28 +1348,20 @@ function updateDebug3D(){
     `Selected: ${selectedNodes.length}\n`;
 }
 
-/* ===========================
- * 3D picking + info card
- * =========================== */
+/* picking + info card */
 function onPointerDown3D(e){
-  if(!is3DVisible()) return;
-  if(!cam) return;
+  if(!is3DVisible() || !cam) return;
 
   const rect = rend.domElement.getBoundingClientRect();
   const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1);
-
   pointer.set(x, y);
   raycaster.setFromCamera(pointer, cam);
 
   const hits = raycaster.intersectObjects(pickables, false);
   if(hits.length === 0){
     hideInfoCard();
-    // click empty clears selection unless shift held
-    if(!e.shiftKey){
-      clearSelection();
-      layer.draw();
-    }
+    if(!e.shiftKey){ clearSelection(); layer.draw(); }
     return;
   }
 
@@ -1367,17 +1369,13 @@ function onPointerDown3D(e){
   const konvaId = hit.userData?.konvaId;
   if(!konvaId) return;
 
-  // find node in layer by _id
   const node = layer.getChildren().find(n => n instanceof Konva.Group && n._id === konvaId);
   if(!node) return;
 
   if(e.shiftKey) toggleSelectNode(node);
   else selectSingleNode(node);
-
-  // ensure 2D reflects immediately
   layer.draw();
 
-  // show card
   showInfoCardFor(node, { x: e.clientX, y: e.clientY });
 }
 
@@ -1388,7 +1386,6 @@ function getNodeSizeMm(node){
   const hPx = node.attrs.customData?.height3dPx || 0;
   return { wMm: pxToMm(wPx), dMm: pxToMm(dPx), hMm: pxToMm(hPx) };
 }
-
 function showInfoCardFor(node, pointerClient){
   const card = document.getElementById('info-card');
   if(!card) return;
@@ -1400,20 +1397,15 @@ function showInfoCardFor(node, pointerClient){
   card.innerHTML = `
     <div class="info-title">
       <div class="info-icon">⟲</div>
-      <div style="flex:1;">
-        <div style="font-weight:800;">${escapeHtml(name)}</div>
-      </div>
+      <div style="flex:1;"><div style="font-weight:800;">${escapeHtml(name)}</div></div>
     </div>
     <div class="info-row"><div class="info-key">類別</div><div>${escapeHtml(key)}</div></div>
     <div class="info-row"><div class="info-key">尺寸</div><div>${size.wMm}×${size.dMm}mm</div></div>
     <div class="info-row"><div class="info-key">擺放高度</div><div>${fmtCm(size.hMm)}</div></div>
   `;
-
   card.style.display = 'block';
 
-  // position near pointer
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
   const cardRect = { w: 300, h: 140 };
   let left = pointerClient.x + 14;
   let top = pointerClient.y + 14;
@@ -1423,21 +1415,12 @@ function showInfoCardFor(node, pointerClient){
   card.style.left = `${left}px`;
   card.style.top = `${top}px`;
 }
-
 function hideInfoCard(){
   const card = document.getElementById('info-card');
   if(card) card.style.display = 'none';
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, (m) => ({
-    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-  }[m]));
-}
-
-/* ===========================
- * Hotkeys
- * =========================== */
+/* hotkeys */
 window.addEventListener('keydown', (e) => {
   const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : '';
   const typing = tag === 'input' || tag === 'textarea';
@@ -1449,40 +1432,36 @@ window.addEventListener('keydown', (e) => {
     sync3DSelectionHighlight();
     return;
   }
-
   if(!typing && (e.key === 'Delete' || e.key === 'Backspace')){
     deleteSelected();
     e.preventDefault();
     return;
   }
-
   if(!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a'){
-    const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+    const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device'||n.name()==='zone'));
     selectedNodes = groups;
-    selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+    selectedNode = selectedNodes.length===1 ? selectedNodes[0] : null;
     applyTransformer();
     renderInspector();
     e.preventDefault();
   }
 });
 
-/* ===========================
- * Resize
- * =========================== */
+/* resize */
 window.addEventListener('resize', () => {
   stage.width(window.innerWidth - 600);
   stage.height(window.innerHeight);
-
   drawGrid();
   drawRoomBoundary2D();
   layer.draw();
-
   if(is3DVisible()) resize3D();
 });
 
-/* ===========================
- * Boot
- * =========================== */
+/* toolbar helpers */
+function exportDesignJSON(){ downloadText('labcad-design.json', JSON.stringify(getDesignJSON(), null, 2)); toast('已匯出 JSON'); }
+function triggerImportJSON(){ document.getElementById('import-json-input').click(); }
+
+/* boot */
 renderDeviceCatalog();
 drawGrid();
 drawRoomBoundary2D();
