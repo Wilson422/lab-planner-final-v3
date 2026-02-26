@@ -17,10 +17,11 @@
     }
     body{ margin:0; font-family:'Segoe UI',system-ui; background:var(--bg-dark); color:var(--text); overflow:hidden; }
     .app{ display:grid; grid-template-columns:280px 1fr 300px; height:100vh; }
-    .sidebar{ background:var(--bg-sidebar); border-right:1px solid var(--border); display:flex; flex-direction:column; }
-    .sidebar-header{ padding:20px; background:#111827; font-weight:bold; border-bottom:1px solid var(--border); }
+    .sidebar{ background:var(--bg-sidebar); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:auto; }
+    .sidebar-header{ padding:20px; background:#111827; font-weight:bold; border-bottom:1px solid var(--border); position:sticky; top:0; z-index:2; }
     .tool-section{ padding:15px; border-bottom:1px solid var(--border); }
-    .item{ background:#334155; padding:10px; border-radius:6px; cursor:pointer; text-align:center; font-size:.8rem; margin-bottom:8px; }
+    .tool-section-title{ font-size:12px; letter-spacing:.08em; color:#94a3b8; text-transform:uppercase; margin-bottom:10px; }
+    .item{ background:#334155; padding:10px; border-radius:6px; cursor:pointer; text-align:center; font-size:.8rem; margin-bottom:8px; user-select:none; }
     .item:hover{ background:#475569; border:1px solid var(--primary); }
     .canvas-area{ position:relative; background:#f1f5f9; }
     #container,#three-container{ width:100%; height:100%; }
@@ -101,14 +102,19 @@
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar-header">LabCAD Web Pro</div>
+
     <div class="tool-section">
+      <div class="tool-section-title">區域</div>
       <div class="item" onclick="addZone('新規劃區域')">新增區域</div>
     </div>
-    <div class="tool-section">
-      <div class="item" onclick="addDevice('實驗桌', 120, 60, 80, '#3b82f6')">實驗桌</div>
-      <div class="item" onclick="addDevice('排煙櫃', 100, 80, 200, '#ef4444')">排煙櫃</div>
+
+    <div class="tool-section" id="device-catalog">
+      <div class="tool-section-title">設備</div>
+      <!-- injected by JS -->
+      <div style="color:#94a3b8;font-size:12px;">載入中...</div>
     </div>
-    <div style="margin-top:auto; padding:20px;">
+
+    <div style="margin-top:auto; padding:20px; position:sticky; bottom:0; background:linear-gradient(180deg, rgba(30,41,59,0), rgba(30,41,59,1) 30%);">
       <button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button>
     </div>
   </aside>
@@ -162,6 +168,39 @@ function toast(msg, ms = 1200){
 function safeInt(v, fallback=0){
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/* ===========================
+ * Device Catalog (Stage 4)
+ * =========================== */
+const DEVICE_CATALOG = [
+  { key:'bench', name:'實驗桌', w:120, h:60, z:80,  color:'#3b82f6' },
+  { key:'hood',  name:'排煙櫃', w:100, h:80, z:200, color:'#ef4444' },
+
+  // New 5 devices
+  { key:'sink',   name:'洗滌槽',     w:90,  h:60, z:90,  color:'#22c55e' },
+  { key:'fridge', name:'冰箱',       w:70,  h:70, z:180, color:'#60a5fa' },
+  { key:'centrifuge', name:'離心機', w:60,  h:60, z:90,  color:'#f59e0b' },
+  { key:'ultra_low_freezer', name:'超低溫冰箱', w:80, h:80, z:200, color:'#38bdf8' },
+  { key:'incubator', name:'培養箱',  w:70,  h:60, z:160, color:'#a78bfa' },
+];
+
+function renderDeviceCatalog(){
+  const section = document.getElementById('device-catalog');
+  if(!section) return;
+
+  // keep the title (first child)
+  const title = section.querySelector('.tool-section-title');
+  section.innerHTML = '';
+  section.appendChild(title);
+
+  DEVICE_CATALOG.forEach(d => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.textContent = d.name;
+    div.onclick = () => addDevice(d.name, d.w, d.h, d.z, d.color);
+    section.appendChild(div);
+  });
 }
 
 /* ===========================
@@ -661,7 +700,7 @@ function exportImg(f){
 }
 
 /* ===========================
- * Stage 1: Save/Load
+ * Save/Load
  * =========================== */
 const STORAGE_KEY = 'labcad_design_v1';
 let autosaveTimer = null;
@@ -697,7 +736,7 @@ function getDesignJSON(){
     .map(serializeNode);
 
   return {
-    version: 3,
+    version: 4,
     savedAt: new Date().toISOString(),
     stage: { width: stage.width(), height: stage.height() },
     ui: { gridVisible, snapEnabled, gridSize: GRID_SIZE },
@@ -848,18 +887,12 @@ document.getElementById('import-json-input').addEventListener('change', (e) => {
 });
 
 /* ===========================
- * 3D Engine (Stage 3: shadows + highlight)
+ * 3D Engine (Stage 3 kept)
  * =========================== */
 let sc, cam, rend, ctrl;
 let objectsGroup;
 let groundMesh;
 let dirLight;
-
-/**
- * 3D objects map
- * key: nodeId (Konva._id)
- * val: { root, mesh, edges, baseMaterial, highlightMaterial }
- */
 const threeMap = new Map();
 
 function is3DVisible(){
@@ -908,7 +941,6 @@ function init3DIfNeeded(){
   ctrl.target.set(0, 0, 0);
   ctrl.update();
 
-  // Lights
   sc.add(new THREE.AmbientLight(0xffffff, 0.55));
 
   dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
@@ -924,7 +956,6 @@ function init3DIfNeeded(){
   dirLight.shadow.camera.bottom = -2500;
   sc.add(dirLight);
 
-  // Ground
   const groundGeo = new THREE.PlaneGeometry(8000, 8000);
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95, metalness: 0.0 });
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
@@ -933,7 +964,6 @@ function init3DIfNeeded(){
   groundMesh.receiveShadow = true;
   sc.add(groundMesh);
 
-  // Helpers
   sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
   sc.add(new THREE.AxesHelper(200));
 
@@ -991,7 +1021,6 @@ function clearObjectsGroup(){
   threeMap.clear();
 }
 
-/* Build 3D objects and keep mapping for highlight */
 function update3D(){
   if(!sc) return;
 
@@ -1040,10 +1069,8 @@ function update3D(){
       root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
 
       objectsGroup.add(root);
-
       threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, type: 'device' });
     }else{
-      // zone as slightly raised plane to receive shadow subtly
       const baseMat = new THREE.MeshStandardMaterial({
         color: 0x3b82f6,
         transparent: true,
@@ -1076,7 +1103,6 @@ function update3D(){
       root.add(edges);
 
       objectsGroup.add(root);
-
       threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, type: 'zone' });
     }
   });
@@ -1086,14 +1112,9 @@ function update3D(){
   updateDebug3D();
 }
 
-function getSelectedIds(){
-  return new Set(selectedNodes.map(n => n._id));
-}
-
-/* Highlight in 3D based on current 2D selection */
 function sync3DSelectionHighlight(){
   if(!sc || !objectsGroup) return;
-  const sel = getSelectedIds();
+  const sel = new Set(selectedNodes.map(n => n._id));
   threeMap.forEach((obj, id) => {
     const selected = sel.has(id);
     obj.mesh.material = selected ? obj.highlightMaterial : obj.baseMaterial;
@@ -1194,6 +1215,7 @@ window.addEventListener('resize', () => {
 /* ===========================
  * Boot
  * =========================== */
+renderDeviceCatalog();
 drawGrid();
 tryLoadFromLocalStorage();
 </script>
