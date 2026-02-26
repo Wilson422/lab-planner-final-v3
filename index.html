@@ -1,71 +1,710 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Planner</title>
-    <!-- Other existing metadata and styles -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LabCAD Web Pro - 實驗室規劃系統</title>
+
+  <script src="https://unpkg.com/konva@9/konva.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root{
+      --bg-dark:#0f172a; --bg-sidebar:#1e293b; --primary:#3b82f6; --accent:#10b981; --danger:#ef4444; --border:#334155; --text:#f1f5f9;
+    }
+    body{ margin:0; font-family:'Segoe UI',system-ui; background:var(--bg-dark); color:var(--text); overflow:hidden; }
+    .app{ display:grid; grid-template-columns:280px 1fr 300px; height:100vh; }
+    .sidebar{ background:var(--bg-sidebar); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+    .sidebar-header{ padding:20px; background:#111827; font-weight:bold; border-bottom:1px solid var(--border); }
+    .tool-section{ padding:15px; border-bottom:1px solid var(--border); }
+    .item{ background:#334155; padding:10px; border-radius:6px; cursor:pointer; text-align:center; font-size:.8rem; margin-bottom:8px; }
+    .item:hover{ background:#475569; border:1px solid var(--primary); }
+    .canvas-area{ position:relative; background:#f1f5f9; }
+    #container,#three-container{ width:100%; height:100%; }
+    #three-container{ position:absolute; top:0; left:0; display:none; z-index:60; background:#0a0f1a; }
+
+    .toolbar{
+      position:absolute; top:20px; left:50%; transform:translateX(-50%);
+      background:rgba(30,41,59,.95); padding:8px 16px; border-radius:50px;
+      display:flex; gap:12px; z-index:100; border:1px solid var(--border);
+      align-items:center;
+    }
+    .tool-btn{ background:none; border:none; color:#cbd5e1; cursor:pointer; display:flex; align-items:center; }
+    .tool-btn:hover{ color:#fff; }
+    .tool-divider{ width:1px; height:18px; background:rgba(148,163,184,.35); margin:0 2px; }
+
+    .inspector{ background:#1e293b; border-left:1px solid var(--border); padding:20px; color:#cbd5e1; overflow:auto; }
+    .prop-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:15px; }
+    .prop-group{ display:flex; flex-direction:column; gap:4px; }
+    .prop-label{ font-size:.7rem; color:#94a3b8; text-transform:uppercase; }
+    input{ background:#0f172a; border:1px solid #334155; color:#fff; padding:8px; border-radius:4px; font-size:.9rem; }
+
+    .btn-action{
+      color:#fff; border:none; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold;
+      width:100%; margin-top:15px; display:flex; align-items:center; justify-content:center; gap:5px;
+    }
+
+    /* Debug overlay (3D only) */
+    #debug3d{
+      position:absolute; right:10px; bottom:10px; z-index:200;
+      background:rgba(15,23,42,.85); color:#e2e8f0; font-size:12px;
+      padding:8px 10px; border:1px solid rgba(148,163,184,.35);
+      border-radius:8px; display:none; white-space:pre;
+    }
+
+    /* small toast */
+    #toast{
+      position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
+      background:rgba(15,23,42,.9); color:#e2e8f0; font-size:13px;
+      padding:8px 12px; border-radius:10px; border:1px solid rgba(148,163,184,.25);
+      z-index:300; display:none;
+    }
+  </style>
 </head>
+
 <body>
-    <div id="toolbar">
-        <!-- Existing toolbar elements -->
-        <button id="autosaveBtn">Autosave Design</button>
-        <button id="exportJsonBtn">Export Design as JSON</button>
-        <input type="file" id="importJsonFile" accept="application/json" />
-        <button id="clearDesignBtn">Reset/Clear Design</button>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">LabCAD Web Pro</div>
+    <div class="tool-section">
+      <div class="item" onclick="addZone('新規劃區域')">新增區域</div>
     </div>
-    <div id="designArea">
-        <!-- Existing design area elements -->
+    <div class="tool-section">
+      <div class="item" onclick="addDevice('實驗桌', 120, 60, 80, '#3b82f6')">實驗桌</div>
+      <div class="item" onclick="addDevice('排煙櫃', 100, 80, 200, '#ef4444')">排煙櫃</div>
     </div>
-    <script>
-        // Existing scripts
+    <div style="margin-top:auto; padding:20px;">
+      <button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button>
+    </div>
+  </aside>
 
-        // Function to save design to localStorage
-        function autosaveDesign() {
-            const design = getCurrentDesign(); // Replace with function to get the current design
-            localStorage.setItem('design', JSON.stringify(design));
-        }
-        document.getElementById('autosaveBtn').addEventListener('click', autosaveDesign);
+  <main class="canvas-area">
+    <div class="toolbar" title="工具列">
+      <!-- Existing -->
+      <button class="tool-btn" onclick="exportImg('png')" title="匯出 PNG"><i data-lucide="image"></i></button>
+      <button class="tool-btn" onclick="exportImg('pdf')" title="匯出 PDF"><i data-lucide="file-text"></i></button>
+      <button class="tool-btn" onclick="deleteSelected()" title="刪除選取"><i data-lucide="trash-2"></i></button>
 
-        // Function to export design as JSON
-        function exportDesign() {
-            const design = getCurrentDesign();
-            const blob = new Blob([JSON.stringify(design, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'design.json';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-        document.getElementById('exportJsonBtn').addEventListener('click', exportDesign);
+      <div class="tool-divider"></div>
 
-        // Function to import design from JSON file
-        document.getElementById('importJsonFile').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if(file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    const design = JSON.parse(e.target.result);
-                    loadDesign(design); // Replace with function to load the design
-                    if(is3DMode()) {
-                        update3D();
-                    }
-                };
-                reader.readAsText(file);
-            }
-        });
+      <!-- Stage 1: Save/Load design (JSON + autosave) -->
+      <button class="tool-btn" onclick="exportDesignJSON()" title="匯出設計 JSON"><i data-lucide="download"></i></button>
 
-        // Function to clear design
-        function clearDesign() {
-            clearCurrentDesign(); // Replace with function to clear the current design
-            if(is3DMode()) {
-                update3D();
-            }
-        }
-        document.getElementById('clearDesignBtn').addEventListener('click', clearDesign);
-    </script>
+      <button class="tool-btn" onclick="triggerImportJSON()" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
+      <input id="import-json-input" type="file" accept="application/json" style="display:none" />
+
+      <button class="tool-btn" onclick="resetDesign(true)" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
+    </div>
+
+    <div id="container"></div>
+    <div id="three-container"></div>
+    <div id="debug3d"></div>
+    <div id="toast"></div>
+  </main>
+
+  <aside class="inspector">
+    <h3 id="ins-title">屬性</h3>
+    <div id="inspector-content">請選擇物件</div>
+  </aside>
+</div>
+
+<script>
+/* ---------------------------
+ * Helpers / UI
+ * --------------------------- */
+lucide.createIcons();
+
+function toast(msg, ms = 1200){
+  const el = document.getElementById('toast');
+  if(!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display = 'none', ms);
+}
+
+function safeInt(v, fallback=0){
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/* ---------------------------
+ * Konva 2D
+ * --------------------------- */
+const stage = new Konva.Stage({
+  container: 'container',
+  width: window.innerWidth - 580,
+  height: window.innerHeight
+});
+const layer = new Konva.Layer();
+stage.add(layer);
+
+const tr = new Konva.Transformer({ keepRatio: false });
+layer.add(tr);
+
+let selectedNode = null;
+
+function addZone(name){ createNode('zone', name, 300, 200, 0, 'rgba(59, 130, 246, 0.1)', '#3b82f6'); }
+function addDevice(name, w, h, z, color){ createNode('device', name, w, h, z, color, '#1e293b'); }
+
+function createNode(type, name, w, h, z, fill, stroke){
+  const group = new Konva.Group({
+    x: 100, y: 100, draggable: true, name: type,
+    customData: { height3d: z }
+  });
+
+  const rect = new Konva.Rect({
+    width: w, height: h, fill, stroke,
+    name: 'main-rect',
+    dash: type === 'zone' ? [10,5] : []
+  });
+
+  const title = new Konva.Text({
+    text: name, fontSize: 14, fill: stroke,
+    padding: 8, name: 'title-text'
+  });
+
+  const dim = new Konva.Text({
+    text: '', fontSize: 10, fill: stroke, name: 'dim-label'
+  });
+
+  group.add(rect, title, dim);
+  updateUI(group);
+
+  group.on('dragmove transform', () => {
+    updateUI(group);
+    scheduleAutosave();
+  });
+
+  group.on('dragend transformend', () => scheduleAutosave());
+
+  group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+
+  layer.add(group);
+  if(type === 'zone') group.moveToBottom();
+
+  selectNode(group);
+  layer.draw();
+
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function updateUI(group){
+  const rect = group.findOne('.main-rect');
+  const dim = group.findOne('.dim-label');
+  const w = Math.round(rect.width() * group.scaleX());
+  const h = Math.round(rect.height() * group.scaleY());
+  dim.text(`${w} x ${h}`);
+  dim.x(rect.width() - dim.width() - 5);
+  dim.y(rect.height() - 15);
+  if(selectedNode === group) renderInspector();
+}
+
+function selectNode(node){
+  selectedNode = node;
+  tr.nodes([node]);
+  renderInspector();
+  layer.draw();
+  if(is3DVisible()) update3D();
+}
+
+stage.on('click tap', (e) => {
+  if(e.target === stage){
+    tr.nodes([]);
+    selectedNode = null;
+    document.getElementById('inspector-content').innerText = '請選擇物件';
+    layer.draw();
+    if(is3DVisible()) update3D();
+  }
+});
+
+function renderInspector(){
+  if(!selectedNode) return;
+  const n = selectedNode;
+  const r = n.findOne('.main-rect');
+  const w = Math.round(r.width() * n.scaleX());
+  const h = Math.round(r.height() * n.scaleY());
+
+  document.getElementById('inspector-content').innerHTML = `
+    <div class="prop-row">
+      <label class="prop-label">名稱</label>
+      <input type="text" value="${n.findOne('.title-text').text()}" oninput="updateProp('name', this.value)">
+    </div>
+    <div class="prop-grid">
+      <div class="prop-group"><label class="prop-label">X</label><input type="number" value="${Math.round(n.x())}" oninput="updateProp('x', this.value)"></div>
+      <div class="prop-group"><label class="prop-label">Y</label><input type="number" value="${Math.round(n.y())}" oninput="updateProp('y', this.value)"></div>
+      <div class="prop-group"><label class="prop-label">W</label><input type="number" value="${w}" oninput="updateProp('w', this.value)"></div>
+      <div class="prop-group"><label class="prop-label">H</label><input type="number" value="${h}" oninput="updateProp('h', this.value)"></div>
+      <div class="prop-group"><label class="prop-label">旋轉</label><input type="number" value="${Math.round(n.rotation())}" oninput="updateProp('rot', this.value)"></div>
+      <div class="prop-group"><label class="prop-label">高度</label><input type="number" value="${n.attrs.customData?.height3d || 0}" oninput="updateProp('z', this.value)"></div>
+    </div>
+    <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
+  `;
+}
+
+function updateProp(p, v){
+  if(!selectedNode) return;
+
+  if(p === 'name') selectedNode.findOne('.title-text').text(v);
+  if(p === 'x') selectedNode.x(safeInt(v));
+  if(p === 'y') selectedNode.y(safeInt(v));
+
+  if(p === 'w'){
+    const baseW = selectedNode.findOne('.main-rect').width();
+    const targetW = Math.max(1, safeInt(v, baseW));
+    selectedNode.scaleX(targetW / baseW);
+  }
+  if(p === 'h'){
+    const baseH = selectedNode.findOne('.main-rect').height();
+    const targetH = Math.max(1, safeInt(v, baseH));
+    selectedNode.scaleY(targetH / baseH);
+  }
+
+  if(p === 'rot') selectedNode.rotation(safeInt(v));
+  if(p === 'z') selectedNode.attrs.customData.height3d = safeInt(v);
+
+  updateUI(selectedNode);
+  layer.draw();
+
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function deleteSelected(){
+  if(selectedNode){
+    selectedNode.destroy();
+    tr.nodes([]);
+    selectedNode = null;
+    document.getElementById('inspector-content').innerText = '請選擇物件';
+    layer.draw();
+
+    scheduleAutosave();
+    if(is3DVisible()) update3D();
+  }
+}
+
+/* ---------------------------
+ * Stage 1: Save/Load design JSON
+ * --------------------------- */
+const STORAGE_KEY = 'labcad_design_v1';
+let autosaveTimer = null;
+
+function scheduleAutosave(){
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    saveDesignToLocalStorage();
+  }, 150);
+}
+
+function serializeNode(group){
+  const r = group.findOne('.main-rect');
+  const title = group.findOne('.title-text');
+
+  const w = r.width() * group.scaleX();
+  const h = r.height() * group.scaleY();
+
+  return {
+    type: group.name(), // 'device' | 'zone'
+    name: title ? title.text() : '',
+    x: group.x(),
+    y: group.y(),
+    w,
+    h,
+    rot: group.rotation(),
+    fill: r.fill(),
+    stroke: r.stroke(),
+    dash: r.dash(),
+    height3d: group.attrs.customData?.height3d || 0
+  };
+}
+
+function getDesignJSON(){
+  const nodes = layer.getChildren()
+    .filter(n => n instanceof Konva.Group && (n.name() === 'device' || n.name() === 'zone'))
+    .map(serializeNode);
+
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    stage: { width: stage.width(), height: stage.height() },
+    nodes
+  };
+}
+
+function saveDesignToLocalStorage(){
+  try{
+    const design = getDesignJSON();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
+    // no spammy toast; show a subtle one occasionally
+  }catch(err){
+    console.error(err);
+    toast('自動保存失敗（localStorage）');
+  }
+}
+
+function resetDesign(alsoClearLocalStorage=false){
+  // remove all groups (keep transformer)
+  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+  groups.forEach(g => g.destroy());
+
+  tr.nodes([]);
+  selectedNode = null;
+  document.getElementById('inspector-content').innerText = '請選擇物件';
+  layer.draw();
+
+  if(alsoClearLocalStorage){
+    localStorage.removeItem(STORAGE_KEY);
+    toast('已清空設計');
+  }else{
+    scheduleAutosave();
+  }
+
+  if(is3DVisible()) update3D();
+}
+
+function loadDesignFromObject(design){
+  if(!design || !Array.isArray(design.nodes)) throw new Error('Invalid design format');
+
+  resetDesign(false);
+
+  design.nodes.forEach(n => {
+    const type = n.type === 'zone' ? 'zone' : 'device';
+    const stroke = n.stroke || (type==='zone' ? '#3b82f6' : '#1e293b');
+    const dash = Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
+    const fill = n.fill || (type==='zone' ? 'rgba(59, 130, 246, 0.1)' : '#3b82f6');
+
+    const group = new Konva.Group({
+      x: Number(n.x) || 0,
+      y: Number(n.y) || 0,
+      draggable: true,
+      name: type,
+      customData: { height3d: safeInt(n.height3d, 0) }
+    });
+
+    const rect = new Konva.Rect({
+      width: Math.max(1, Number(n.w) || 10),
+      height: Math.max(1, Number(n.h) || 10),
+      fill,
+      stroke,
+      name: 'main-rect',
+      dash
+    });
+
+    const title = new Konva.Text({
+      text: n.name || '',
+      fontSize: 14,
+      fill: stroke,
+      padding: 8,
+      name: 'title-text'
+    });
+
+    const dim = new Konva.Text({
+      text: '',
+      fontSize: 10,
+      fill: stroke,
+      name: 'dim-label'
+    });
+
+    group.rotation(Number(n.rot) || 0);
+
+    group.add(rect, title, dim);
+    updateUI(group);
+
+    group.on('dragmove transform', () => { updateUI(group); scheduleAutosave(); });
+    group.on('dragend transformend', () => scheduleAutosave());
+    group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+
+    layer.add(group);
+    if(type === 'zone') group.moveToBottom();
+  });
+
+  layer.draw();
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function tryLoadFromLocalStorage(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if(!raw) return;
+  try{
+    const design = JSON.parse(raw);
+    loadDesignFromObject(design);
+    toast('已從自動保存載入');
+  }catch(err){
+    console.warn('Failed to load autosave:', err);
+  }
+}
+
+function downloadText(filename, text, mime='application/json'){
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportDesignJSON(){
+  const design = getDesignJSON();
+  downloadText('labcad-design.json', JSON.stringify(design, null, 2));
+  toast('已匯出 JSON');
+}
+
+function triggerImportJSON(){
+  document.getElementById('import-json-input').click();
+}
+
+document.getElementById('import-json-input').addEventListener('change', (e) => {
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const design = JSON.parse(reader.result);
+      loadDesignFromObject(design);
+      toast('已匯入 JSON');
+    }catch(err){
+      console.error(err);
+      toast('匯入失敗：JSON 格式不正確');
+    }finally{
+      e.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+});
+
+/* ---------------------------
+ * 3D Engine (stable version)
+ * --------------------------- */
+let sc, cam, rend, ctrl;
+let objectsGroup;
+
+function is3DVisible(){
+  const c3d = document.getElementById('three-container');
+  return c3d && c3d.style.display === 'block';
+}
+
+function get3DSize(){
+  const c3d = document.getElementById('three-container');
+  const w = Math.max(1, c3d.clientWidth || 0);
+  const h = Math.max(1, c3d.clientHeight || 0);
+  return { w, h };
+}
+
+function resize3D(){
+  if(!rend || !cam) return;
+  const { w, h } = get3DSize();
+  rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  rend.setSize(w, h, false);
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+  updateDebug3D();
+}
+
+function init3DIfNeeded(){
+  const c3d = document.getElementById('three-container');
+  if(sc) return;
+
+  sc = new THREE.Scene();
+  sc.background = new THREE.Color(0x0a0f1a);
+
+  const { w, h } = get3DSize();
+  cam = new THREE.PerspectiveCamera(45, w / h, 1, 10000);
+  cam.position.set(1000, 1000, 1000);
+
+  rend = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  rend.setSize(w, h, false);
+  c3d.appendChild(rend.domElement);
+
+  ctrl = new THREE.OrbitControls(cam, rend.domElement);
+  ctrl.enableDamping = true;
+  ctrl.dampingFactor = 0.08;
+  ctrl.target.set(0, 0, 0);
+  ctrl.update();
+
+  sc.add(new THREE.AmbientLight(0xffffff, 0.9));
+  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+  dl.position.set(1, 2, 1);
+  sc.add(dl);
+
+  sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
+  sc.add(new THREE.AxesHelper(200));
+
+  objectsGroup = new THREE.Group();
+  objectsGroup.name = 'objectsGroup';
+  sc.add(objectsGroup);
+
+  updateDebug3D();
+}
+
+function toggle3D(){
+  const btn = document.getElementById('toggle-3d');
+  const c2d = document.getElementById('container');
+  const c3d = document.getElementById('three-container');
+  const debug = document.getElementById('debug3d');
+
+  const opening = (c3d.style.display === 'none' || c3d.style.display === '');
+
+  if(opening){
+    c3d.style.display = 'block';
+    c2d.style.display = 'none';
+    btn.innerText = '返回 2D';
+    if(debug) debug.style.display = 'block';
+
+    requestAnimationFrame(() => {
+      init3DIfNeeded();
+      resize3D();
+      update3D();
+      animate3D();
+    });
+  }else{
+    c3d.style.display = 'none';
+    c2d.style.display = 'block';
+    btn.innerText = '查看 3D 預覽';
+    if(debug) debug.style.display = 'none';
+  }
+}
+
+function disposeObject(obj){
+  if(!obj) return;
+  if(obj.geometry) obj.geometry.dispose();
+  if(obj.material){
+    if(Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose && m.dispose());
+    else if(obj.material.dispose) obj.material.dispose();
+  }
+}
+
+function clearObjectsGroup(){
+  if(!objectsGroup) return;
+  for(let i = objectsGroup.children.length - 1; i >= 0; i--){
+    const child = objectsGroup.children[i];
+    child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
+    objectsGroup.remove(child);
+  }
+}
+
+function update3D(){
+  if(!sc) return;
+
+  if(objectsGroup) clearObjectsGroup();
+
+  layer.getChildren()
+    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
+    .forEach(n => {
+      const r = n.findOne('.main-rect');
+      const w = r.width() * n.scaleX();
+      const d = r.height() * n.scaleY();
+      const x = (n.x() + w/2) - stage.width()/2;
+      const y = (n.y() + d/2) - stage.height()/2;
+
+      if(n.name() === 'device'){
+        const h = n.attrs.customData?.height3d || 100;
+        const m = new THREE.Mesh(
+          new THREE.BoxGeometry(w, h, d),
+          new THREE.MeshPhongMaterial({ color: r.fill(), transparent: true, opacity: 0.9 })
+        );
+        m.position.set(x, h/2, y);
+        m.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
+        objectsGroup.add(m);
+      }else{
+        const m = new THREE.Mesh(
+          new THREE.PlaneGeometry(w, d),
+          new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.2, side: 2 })
+        );
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(x, 1, y);
+        objectsGroup.add(m);
+      }
+    });
+
+  fitCameraToObjects();
+  updateDebug3D();
+}
+
+function fitCameraToObjects(){
+  if(!objectsGroup || objectsGroup.children.length === 0 || !cam || !ctrl) return;
+
+  const box = new THREE.Box3().setFromObject(objectsGroup);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+
+  ctrl.target.copy(center);
+
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = cam.fov * (Math.PI / 180);
+  let cameraDist = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+  cameraDist *= 1.5;
+
+  const dir = new THREE.Vector3(1,1,1).normalize();
+  cam.position.copy(center.clone().add(dir.multiplyScalar(cameraDist)));
+  cam.near = Math.max(1, cameraDist / 100);
+  cam.far = Math.max(10000, cameraDist * 10);
+  cam.updateProjectionMatrix();
+
+  ctrl.update();
+}
+
+function animate3D(){
+  if(is3DVisible()){
+    requestAnimationFrame(animate3D);
+    ctrl.update();
+    rend.render(sc, cam);
+  }
+}
+
+function updateDebug3D(){
+  const debug = document.getElementById('debug3d');
+  if(!debug || !is3DVisible()) return;
+  const { w, h } = get3DSize();
+  const objCount = objectsGroup ? objectsGroup.children.length : 0;
+  debug.textContent =
+    `3D: ${w} x ${h}\n` +
+    `Objects: ${objCount}\n` +
+    `Cam aspect: ${cam ? cam.aspect.toFixed(3) : '-'}\n`;
+}
+
+/* ---------------------------
+ * Exports (existing)
+ * --------------------------- */
+function exportImg(f){
+  tr.nodes([]);
+  layer.draw();
+
+  if(f === 'png'){
+    const l = document.createElement('a');
+    l.download = 'lab.png';
+    l.href = stage.toDataURL();
+    l.click();
+  }else{
+    const doc = new jspdf.jsPDF('l', 'px', [stage.width(), stage.height()]);
+    doc.addImage(stage.toDataURL(), 'PNG', 0, 0, stage.width(), stage.height());
+    doc.save('lab.pdf');
+  }
+}
+
+/* ---------------------------
+ * Boot
+ * --------------------------- */
+window.addEventListener('resize', () => {
+  stage.width(window.innerWidth - 580);
+  stage.height(window.innerHeight);
+  layer.draw();
+  if(is3DVisible()) resize3D();
+});
+
+// load autosave on startup
+tryLoadFromLocalStorage();
+</script>
 </body>
 </html>
