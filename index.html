@@ -62,6 +62,40 @@
       padding:8px 12px; border-radius:10px; border:1px solid rgba(148,163,184,.25);
       z-index:300; display:none;
     }
+
+    .chip{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px; border-radius:999px;
+      background:rgba(148,163,184,.12);
+      border:1px solid rgba(148,163,184,.25);
+      color:#e2e8f0; font-size:12px;
+      user-select:none;
+    }
+    .toggle{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:8px 10px; border-radius:8px;
+      border:1px solid rgba(148,163,184,.2);
+      background:rgba(15,23,42,.35);
+      margin-top:10px;
+    }
+    .toggle input{ width:auto; }
+    .align-grid{
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:8px;
+      margin-top:10px;
+    }
+    .small-btn{
+      width:100%;
+      background:#0f172a;
+      border:1px solid rgba(148,163,184,.25);
+      color:#e2e8f0;
+      padding:8px 10px;
+      border-radius:8px;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .small-btn:hover{ border-color: rgba(59,130,246,.7); }
   </style>
 </head>
 
@@ -83,20 +117,23 @@
 
   <main class="canvas-area">
     <div class="toolbar" title="工具列">
-      <!-- Existing -->
       <button class="tool-btn" onclick="exportImg('png')" title="匯出 PNG"><i data-lucide="image"></i></button>
       <button class="tool-btn" onclick="exportImg('pdf')" title="匯出 PDF"><i data-lucide="file-text"></i></button>
       <button class="tool-btn" onclick="deleteSelected()" title="刪除選取"><i data-lucide="trash-2"></i></button>
 
       <div class="tool-divider"></div>
 
-      <!-- Stage 1: Save/Load design (JSON + autosave) -->
+      <!-- Stage 1 -->
       <button class="tool-btn" onclick="exportDesignJSON()" title="匯出設計 JSON"><i data-lucide="download"></i></button>
-
       <button class="tool-btn" onclick="triggerImportJSON()" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
       <input id="import-json-input" type="file" accept="application/json" style="display:none" />
-
       <button class="tool-btn" onclick="resetDesign(true)" title="重置 / 清空"><i data-lucide="rotate-ccw"></i></button>
+
+      <div class="tool-divider"></div>
+
+      <!-- Stage 2 quick toggles -->
+      <button class="tool-btn" onclick="toggleGrid()" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
+      <button class="tool-btn" onclick="toggleSnap()" title="吸附格線"><i data-lucide="magnet"></i></button>
     </div>
 
     <div id="container"></div>
@@ -112,9 +149,9 @@
 </div>
 
 <script>
-/* ---------------------------
+/* ===========================
  * Helpers / UI
- * --------------------------- */
+ * =========================== */
 lucide.createIcons();
 
 function toast(msg, ms = 1200){
@@ -131,22 +168,92 @@ function safeInt(v, fallback=0){
   return Number.isFinite(n) ? n : fallback;
 }
 
-/* ---------------------------
+/* ===========================
  * Konva 2D
- * --------------------------- */
+ * =========================== */
 const stage = new Konva.Stage({
   container: 'container',
   width: window.innerWidth - 580,
   height: window.innerHeight
 });
-const layer = new Konva.Layer();
+
+const gridLayer = new Konva.Layer(); // behind all nodes
+const layer = new Konva.Layer();     // main nodes
+stage.add(gridLayer);
 stage.add(layer);
 
 const tr = new Konva.Transformer({ keepRatio: false });
 layer.add(tr);
 
-let selectedNode = null;
+let selectedNodes = []; // multi-select
+let selectedNode = null; // kept for compatibility (single select use-cases)
 
+/* ---- Stage 2: Grid / Snap ---- */
+const GRID_SIZE = 10;
+let gridVisible = true;
+let snapEnabled = true;
+
+function toggleGrid(){
+  gridVisible = !gridVisible;
+  drawGrid();
+  toast(gridVisible ? '格線：顯示' : '格線：隱藏');
+}
+
+function toggleSnap(){
+  snapEnabled = !snapEnabled;
+  toast(snapEnabled ? '吸附：開啟' : '吸附：關閉');
+}
+
+function snap(v){ return Math.round(v / GRID_SIZE) * GRID_SIZE; }
+
+function drawGrid(){
+  gridLayer.destroyChildren();
+  if(!gridVisible){
+    gridLayer.draw();
+    return;
+  }
+
+  const w = stage.width();
+  const h = stage.height();
+
+  for(let x=0; x<=w; x+=GRID_SIZE){
+    gridLayer.add(new Konva.Line({
+      points:[x,0,x,h],
+      stroke:'rgba(15, 23, 42, 0.08)',
+      strokeWidth:1
+    }));
+  }
+  for(let y=0; y<=h; y+=GRID_SIZE){
+    gridLayer.add(new Konva.Line({
+      points:[0,y,w,y],
+      stroke:'rgba(15, 23, 42, 0.08)',
+      strokeWidth:1
+    }));
+  }
+  gridLayer.draw();
+}
+
+/* ---- selection rectangle (marquee) ---- */
+let selecting = false;
+let selectionRect;
+let startPos = null;
+
+function initSelectionRect(){
+  selectionRect = new Konva.Rect({
+    x: 0, y: 0, width: 0, height: 0,
+    fill: 'rgba(59,130,246,0.12)',
+    stroke: 'rgba(59,130,246,0.9)',
+    strokeWidth: 1,
+    visible: false,
+    listening: false
+  });
+  layer.add(selectionRect);
+}
+initSelectionRect();
+
+/* ===========================
+ * Nodes CRUD
+ * =========================== */
 function addZone(name){ createNode('zone', name, 300, 200, 0, 'rgba(59, 130, 246, 0.1)', '#3b82f6'); }
 function addDevice(name, w, h, z, color){ createNode('device', name, w, h, z, color, '#1e293b'); }
 
@@ -174,23 +281,62 @@ function createNode(type, name, w, h, z, fill, stroke){
   group.add(rect, title, dim);
   updateUI(group);
 
-  group.on('dragmove transform', () => {
+  group.on('dragmove', () => {
+    if(snapEnabled){
+      group.position({ x: snap(group.x()), y: snap(group.y()) });
+    }
     updateUI(group);
     scheduleAutosave();
   });
 
-  group.on('dragend transformend', () => scheduleAutosave());
+  group.on('dragend', () => scheduleAutosave());
 
-  group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+  group.on('transform', () => {
+    updateUI(group);
+    scheduleAutosave();
+  });
+
+  group.on('transformend', () => {
+    if(snapEnabled) normalizeGroupToGrid(group);
+    scheduleAutosave();
+    if(is3DVisible()) update3D();
+  });
+
+  group.on('click tap', (e) => {
+    e.cancelBubble = true;
+    const multi = e.evt && e.evt.shiftKey;
+    if(multi) toggleSelectNode(group);
+    else selectSingleNode(group);
+  });
 
   layer.add(group);
   if(type === 'zone') group.moveToBottom();
 
-  selectNode(group);
+  selectSingleNode(group);
   layer.draw();
 
   scheduleAutosave();
   if(is3DVisible()) update3D();
+}
+
+function normalizeGroupToGrid(group){
+  // snap position
+  group.x(snap(group.x()));
+  group.y(snap(group.y()));
+
+  // snap size by converting back to absolute (w/h) and applying scale
+  const rect = group.findOne('.main-rect');
+  const absW = rect.width() * group.scaleX();
+  const absH = rect.height() * group.scaleY();
+
+  const targetW = Math.max(GRID_SIZE, snap(absW));
+  const targetH = Math.max(GRID_SIZE, snap(absH));
+
+  group.scaleX(targetW / rect.width());
+  group.scaleY(targetH / rect.height());
+
+  // snap rotation to 1 degree if wanted; keep as-is for now
+  layer.draw();
 }
 
 function updateUI(group){
@@ -201,39 +347,195 @@ function updateUI(group){
   dim.text(`${w} x ${h}`);
   dim.x(rect.width() - dim.width() - 5);
   dim.y(rect.height() - 15);
-  if(selectedNode === group) renderInspector();
+
+  if(selectedNodes.includes(group)) renderInspector();
 }
 
-function selectNode(node){
-  selectedNode = node;
-  tr.nodes([node]);
-  renderInspector();
+/* ===========================
+ * Selection model (Stage 2)
+ * =========================== */
+function applyTransformer(){
+  tr.nodes(selectedNodes);
   layer.draw();
+}
+
+function clearSelection(){
+  selectedNodes = [];
+  selectedNode = null;
+  applyTransformer();
+  document.getElementById('inspector-content').innerText = '請選擇物件';
   if(is3DVisible()) update3D();
 }
 
+function selectSingleNode(node){
+  selectedNodes = [node];
+  selectedNode = node;
+  applyTransformer();
+  renderInspector();
+  if(is3DVisible()) update3D();
+}
+
+function toggleSelectNode(node){
+  const idx = selectedNodes.indexOf(node);
+  if(idx >= 0) selectedNodes.splice(idx, 1);
+  else selectedNodes.push(node);
+
+  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+
+  applyTransformer();
+  renderInspector();
+  if(is3DVisible()) update3D();
+}
+
+/* click empty to clear (unless currently selecting marquee) */
 stage.on('click tap', (e) => {
   if(e.target === stage){
-    tr.nodes([]);
-    selectedNode = null;
-    document.getElementById('inspector-content').innerText = '請選擇物件';
+    clearSelection();
     layer.draw();
-    if(is3DVisible()) update3D();
   }
 });
 
+/* Marquee selection: left drag on empty canvas */
+stage.on('mousedown touchstart', (e) => {
+  if(is3DVisible()) return; // ignore when 3D visible
+
+  if(e.target !== stage) return;
+  if(e.evt && (e.evt.button !== undefined) && e.evt.button !== 0) return; // left only
+
+  selecting = true;
+  startPos = stage.getPointerPosition();
+  selectionRect.visible(true);
+  selectionRect.position(startPos);
+  selectionRect.size({ width: 0, height: 0 });
+
+  // do not clear immediately; allow additive with shift
+  layer.draw();
+});
+
+stage.on('mousemove touchmove', () => {
+  if(!selecting) return;
+  const pos = stage.getPointerPosition();
+  if(!pos) return;
+
+  const x = Math.min(startPos.x, pos.x);
+  const y = Math.min(startPos.y, pos.y);
+  const w = Math.abs(pos.x - startPos.x);
+  const h = Math.abs(pos.y - startPos.y);
+
+  selectionRect.setAttrs({ x, y, width: w, height: h });
+  layer.batchDraw();
+});
+
+stage.on('mouseup touchend', (e) => {
+  if(!selecting) return;
+  selecting = false;
+
+  selectionRect.visible(false);
+  layer.draw();
+
+  const box = selectionRect.getClientRect();
+  const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+
+  const additive = e.evt && e.evt.shiftKey;
+
+  const hits = groups.filter(g => Konva.Util.haveIntersection(box, g.getClientRect()));
+  if(!additive) selectedNodes = [];
+  hits.forEach(g => { if(!selectedNodes.includes(g)) selectedNodes.push(g); });
+
+  selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+  applyTransformer();
+  renderInspector();
+  if(is3DVisible()) update3D();
+});
+
+/* ===========================
+ * Inspector rendering
+ * =========================== */
 function renderInspector(){
-  if(!selectedNode) return;
-  const n = selectedNode;
+  const container = document.getElementById('inspector-content');
+
+  if(selectedNodes.length === 0){
+    container.innerText = '請選擇物件';
+    return;
+  }
+
+  if(selectedNodes.length > 1){
+    container.innerHTML = `
+      <div class="chip">已選取：${selectedNodes.length} 個物件</div>
+
+      <div class="toggle">
+        <div>
+          <div class="prop-label">格線</div>
+          <div style="font-size:12px;color:#94a3b8;">格距：${GRID_SIZE}px</div>
+        </div>
+        <input type="checkbox" ${gridVisible ? 'checked' : ''} onchange="toggleGrid()">
+      </div>
+
+      <div class="toggle">
+        <div>
+          <div class="prop-label">吸附</div>
+          <div style="font-size:12px;color:#94a3b8;">拖曳/縮放吸附格線</div>
+        </div>
+        <input type="checkbox" ${snapEnabled ? 'checked' : ''} onchange="toggleSnap()">
+      </div>
+
+      <div style="margin-top:14px;">
+        <div class="prop-label">對齊</div>
+        <div class="align-grid">
+          <button class="small-btn" onclick="align('left')">左</button>
+          <button class="small-btn" onclick="align('centerX')">中</button>
+          <button class="small-btn" onclick="align('right')">右</button>
+
+          <button class="small-btn" onclick="align('top')">上</button>
+          <button class="small-btn" onclick="align('centerY')">中</button>
+          <button class="small-btn" onclick="align('bottom')">下</button>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;">
+        <div class="prop-label">分佈</div>
+        <div class="align-grid">
+          <button class="small-btn" onclick="distribute('h')">水平等距</button>
+          <button class="small-btn" onclick="distribute('v')">垂直等距</button>
+          <button class="small-btn" onclick="normalizeSelectionToGrid()">吸附全部</button>
+        </div>
+      </div>
+
+      <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除選取 (${selectedNodes.length})</button>
+    `;
+    return;
+  }
+
+  // single selection (original)
+  const n = selectedNodes[0];
   const r = n.findOne('.main-rect');
   const w = Math.round(r.width() * n.scaleX());
   const h = Math.round(r.height() * n.scaleY());
 
-  document.getElementById('inspector-content').innerHTML = `
-    <div class="prop-row">
+  container.innerHTML = `
+    <div class="chip">已選取：1 個物件（Shift 可多選）</div>
+
+    <div class="toggle">
+      <div>
+        <div class="prop-label">格線</div>
+        <div style="font-size:12px;color:#94a3b8;">格距：${GRID_SIZE}px</div>
+      </div>
+      <input type="checkbox" ${gridVisible ? 'checked' : ''} onchange="toggleGrid()">
+    </div>
+
+    <div class="toggle">
+      <div>
+        <div class="prop-label">吸附</div>
+        <div style="font-size:12px;color:#94a3b8;">拖曳/縮放吸附格線</div>
+      </div>
+      <input type="checkbox" ${snapEnabled ? 'checked' : ''} onchange="toggleSnap()">
+    </div>
+
+    <div class="prop-row" style="margin-top:12px;">
       <label class="prop-label">名稱</label>
       <input type="text" value="${n.findOne('.title-text').text()}" oninput="updateProp('name', this.value)">
     </div>
+
     <div class="prop-grid">
       <div class="prop-group"><label class="prop-label">X</label><input type="number" value="${Math.round(n.x())}" oninput="updateProp('x', this.value)"></div>
       <div class="prop-group"><label class="prop-label">Y</label><input type="number" value="${Math.round(n.y())}" oninput="updateProp('y', this.value)"></div>
@@ -242,62 +544,189 @@ function renderInspector(){
       <div class="prop-group"><label class="prop-label">旋轉</label><input type="number" value="${Math.round(n.rotation())}" oninput="updateProp('rot', this.value)"></div>
       <div class="prop-group"><label class="prop-label">高度</label><input type="number" value="${n.attrs.customData?.height3d || 0}" oninput="updateProp('z', this.value)"></div>
     </div>
+
     <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
   `;
 }
 
 function updateProp(p, v){
-  if(!selectedNode) return;
+  if(selectedNodes.length !== 1) return;
+  const node = selectedNodes[0];
 
-  if(p === 'name') selectedNode.findOne('.title-text').text(v);
-  if(p === 'x') selectedNode.x(safeInt(v));
-  if(p === 'y') selectedNode.y(safeInt(v));
+  if(p === 'name') node.findOne('.title-text').text(v);
+  if(p === 'x') node.x(snapEnabled ? snap(safeInt(v)) : safeInt(v));
+  if(p === 'y') node.y(snapEnabled ? snap(safeInt(v)) : safeInt(v));
 
   if(p === 'w'){
-    const baseW = selectedNode.findOne('.main-rect').width();
-    const targetW = Math.max(1, safeInt(v, baseW));
-    selectedNode.scaleX(targetW / baseW);
+    const rect = node.findOne('.main-rect');
+    const baseW = rect.width();
+    let targetW = Math.max(1, safeInt(v, baseW));
+    if(snapEnabled) targetW = Math.max(GRID_SIZE, snap(targetW));
+    node.scaleX(targetW / baseW);
   }
   if(p === 'h'){
-    const baseH = selectedNode.findOne('.main-rect').height();
-    const targetH = Math.max(1, safeInt(v, baseH));
-    selectedNode.scaleY(targetH / baseH);
+    const rect = node.findOne('.main-rect');
+    const baseH = rect.height();
+    let targetH = Math.max(1, safeInt(v, baseH));
+    if(snapEnabled) targetH = Math.max(GRID_SIZE, snap(targetH));
+    node.scaleY(targetH / baseH);
   }
 
-  if(p === 'rot') selectedNode.rotation(safeInt(v));
-  if(p === 'z') selectedNode.attrs.customData.height3d = safeInt(v);
+  if(p === 'rot') node.rotation(safeInt(v));
+  if(p === 'z') node.attrs.customData.height3d = safeInt(v);
 
-  updateUI(selectedNode);
+  updateUI(node);
   layer.draw();
 
   scheduleAutosave();
   if(is3DVisible()) update3D();
 }
 
-function deleteSelected(){
-  if(selectedNode){
-    selectedNode.destroy();
-    tr.nodes([]);
-    selectedNode = null;
-    document.getElementById('inspector-content').innerText = '請選擇物件';
-    layer.draw();
+/* ===========================
+ * Stage 2: Align / Distribute
+ * =========================== */
+function getBounds(node){
+  // client rect includes transforms
+  return node.getClientRect({ skipTransform: false });
+}
 
-    scheduleAutosave();
-    if(is3DVisible()) update3D();
+function align(mode){
+  if(selectedNodes.length < 2) return;
+
+  const bounds = selectedNodes.map(getBounds);
+  const minX = Math.min(...bounds.map(b => b.x));
+  const maxX = Math.max(...bounds.map(b => b.x + b.width));
+  const minY = Math.min(...bounds.map(b => b.y));
+  const maxY = Math.max(...bounds.map(b => b.y + b.height));
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  selectedNodes.forEach((node, i) => {
+    const b = bounds[i];
+    if(mode === 'left') node.x(node.x() + (minX - b.x));
+    if(mode === 'right') node.x(node.x() + (maxX - (b.x + b.width)));
+    if(mode === 'centerX') node.x(node.x() + (centerX - (b.x + b.width/2)));
+
+    if(mode === 'top') node.y(node.y() + (minY - b.y));
+    if(mode === 'bottom') node.y(node.y() + (maxY - (b.y + b.height)));
+    if(mode === 'centerY') node.y(node.y() + (centerY - (b.y + b.height/2)));
+
+    if(snapEnabled){
+      node.x(snap(node.x()));
+      node.y(snap(node.y()));
+    }
+    updateUI(node);
+  });
+
+  layer.draw();
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function distribute(axis){
+  if(selectedNodes.length < 3) return;
+
+  // Sort by x or y
+  const nodes = [...selectedNodes];
+  if(axis === 'h') nodes.sort((a,b) => getBounds(a).x - getBounds(b).x);
+  else nodes.sort((a,b) => getBounds(a).y - getBounds(b).y);
+
+  const firstB = getBounds(nodes[0]);
+  const lastB  = getBounds(nodes[nodes.length - 1]);
+
+  if(axis === 'h'){
+    const totalWidth = nodes.reduce((sum, n) => sum + getBounds(n).width, 0);
+    const span = (lastB.x + lastB.width) - firstB.x;
+    const gap = (span - totalWidth) / (nodes.length - 1);
+
+    let cursor = firstB.x;
+    nodes.forEach((n, idx) => {
+      const b = getBounds(n);
+      if(idx === 0) { cursor = firstB.x + b.width + gap; return; }
+      if(idx === nodes.length - 1) return;
+
+      // move so that left equals cursor
+      n.x(n.x() + (cursor - b.x));
+      if(snapEnabled) n.x(snap(n.x()));
+      updateUI(n);
+
+      cursor += b.width + gap;
+    });
+  }else{
+    const totalHeight = nodes.reduce((sum, n) => sum + getBounds(n).height, 0);
+    const span = (lastB.y + lastB.height) - firstB.y;
+    const gap = (span - totalHeight) / (nodes.length - 1);
+
+    let cursor = firstB.y;
+    nodes.forEach((n, idx) => {
+      const b = getBounds(n);
+      if(idx === 0) { cursor = firstB.y + b.height + gap; return; }
+      if(idx === nodes.length - 1) return;
+
+      n.y(n.y() + (cursor - b.y));
+      if(snapEnabled) n.y(snap(n.y()));
+      updateUI(n);
+
+      cursor += b.height + gap;
+    });
+  }
+
+  layer.draw();
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function normalizeSelectionToGrid(){
+  selectedNodes.forEach(n => normalizeGroupToGrid(n));
+  layer.draw();
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+  toast('已吸附到格線');
+}
+
+/* ===========================
+ * Delete selection
+ * =========================== */
+function deleteSelected(){
+  if(selectedNodes.length === 0) return;
+
+  selectedNodes.forEach(n => n.destroy());
+  selectedNodes = [];
+  selectedNode = null;
+  tr.nodes([]);
+  document.getElementById('inspector-content').innerText = '請選擇物件';
+  layer.draw();
+
+  scheduleAutosave();
+  if(is3DVisible()) update3D();
+}
+
+function exportImg(f){
+  tr.nodes([]);
+  layer.draw();
+
+  if(f === 'png'){
+    const l = document.createElement('a');
+    l.download = 'lab.png';
+    l.href = stage.toDataURL();
+    l.click();
+  }else{
+    const doc = new jspdf.jsPDF('l', 'px', [stage.width(), stage.height()]);
+    doc.addImage(stage.toDataURL(), 'PNG', 0, 0, stage.width(), stage.height());
+    doc.save('lab.pdf');
   }
 }
 
-/* ---------------------------
+/* ===========================
  * Stage 1: Save/Load design JSON
- * --------------------------- */
+ * =========================== */
 const STORAGE_KEY = 'labcad_design_v1';
 let autosaveTimer = null;
 
 function scheduleAutosave(){
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    saveDesignToLocalStorage();
-  }, 150);
+  autosaveTimer = setTimeout(() => saveDesignToLocalStorage(), 150);
 }
 
 function serializeNode(group){
@@ -308,7 +737,7 @@ function serializeNode(group){
   const h = r.height() * group.scaleY();
 
   return {
-    type: group.name(), // 'device' | 'zone'
+    type: group.name(),
     name: title ? title.text() : '',
     x: group.x(),
     y: group.y(),
@@ -324,13 +753,14 @@ function serializeNode(group){
 
 function getDesignJSON(){
   const nodes = layer.getChildren()
-    .filter(n => n instanceof Konva.Group && (n.name() === 'device' || n.name() === 'zone'))
+    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
     .map(serializeNode);
 
   return {
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     stage: { width: stage.width(), height: stage.height() },
+    ui: { gridVisible, snapEnabled, gridSize: GRID_SIZE },
     nodes
   };
 }
@@ -339,7 +769,6 @@ function saveDesignToLocalStorage(){
   try{
     const design = getDesignJSON();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(design));
-    // no spammy toast; show a subtle one occasionally
   }catch(err){
     console.error(err);
     toast('自動保存失敗（localStorage）');
@@ -347,13 +776,13 @@ function saveDesignToLocalStorage(){
 }
 
 function resetDesign(alsoClearLocalStorage=false){
-  // remove all groups (keep transformer)
   const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
   groups.forEach(g => g.destroy());
 
-  tr.nodes([]);
-  selectedNode = null;
-  document.getElementById('inspector-content').innerText = '請選擇物件';
+  // keep selectionRect but reset it too
+  selectionRect.visible(false);
+
+  clearSelection();
   layer.draw();
 
   if(alsoClearLocalStorage){
@@ -370,6 +799,11 @@ function loadDesignFromObject(design){
   if(!design || !Array.isArray(design.nodes)) throw new Error('Invalid design format');
 
   resetDesign(false);
+
+  if(design.ui){
+    gridVisible = design.ui.gridVisible ?? gridVisible;
+    snapEnabled = design.ui.snapEnabled ?? snapEnabled;
+  }
 
   design.nodes.forEach(n => {
     const type = n.type === 'zone' ? 'zone' : 'device';
@@ -414,17 +848,41 @@ function loadDesignFromObject(design){
     group.add(rect, title, dim);
     updateUI(group);
 
-    group.on('dragmove transform', () => { updateUI(group); scheduleAutosave(); });
-    group.on('dragend transformend', () => scheduleAutosave());
-    group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
+    group.on('dragmove', () => {
+      if(snapEnabled){
+        group.position({ x: snap(group.x()), y: snap(group.y()) });
+      }
+      updateUI(group);
+      scheduleAutosave();
+    });
+
+    group.on('dragend', () => scheduleAutosave());
+
+    group.on('transform', () => { updateUI(group); scheduleAutosave(); });
+
+    group.on('transformend', () => {
+      if(snapEnabled) normalizeGroupToGrid(group);
+      scheduleAutosave();
+      if(is3DVisible()) update3D();
+    });
+
+    group.on('click tap', (e) => {
+      e.cancelBubble = true;
+      const multi = e.evt && e.evt.shiftKey;
+      if(multi) toggleSelectNode(group);
+      else selectSingleNode(group);
+    });
 
     layer.add(group);
     if(type === 'zone') group.moveToBottom();
   });
 
+  drawGrid();
   layer.draw();
   scheduleAutosave();
   if(is3DVisible()) update3D();
+
+  toast('已載入設計');
 }
 
 function tryLoadFromLocalStorage(){
@@ -481,9 +939,9 @@ document.getElementById('import-json-input').addEventListener('change', (e) => {
   reader.readAsText(file);
 });
 
-/* ---------------------------
- * 3D Engine (stable version)
- * --------------------------- */
+/* ===========================
+ * 3D Engine (stable)
+ * =========================== */
 let sc, cam, rend, ctrl;
 let objectsGroup;
 
@@ -620,7 +1078,7 @@ function update3D(){
           new THREE.PlaneGeometry(w, d),
           new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.2, side: 2 })
         );
-        m.rotation.x = -Math.PI / 2;
+        m.rotation.x = -THREE.Math.PI / 2;
         m.position.set(x, 1, y);
         objectsGroup.add(m);
       }
@@ -674,36 +1132,53 @@ function updateDebug3D(){
     `Cam aspect: ${cam ? cam.aspect.toFixed(3) : '-'}\n`;
 }
 
-/* ---------------------------
- * Exports (existing)
- * --------------------------- */
-function exportImg(f){
-  tr.nodes([]);
-  layer.draw();
+/* ===========================
+ * Hotkeys (Stage 2)
+ * =========================== */
+window.addEventListener('keydown', (e) => {
+  // avoid interfering with typing in inputs
+  const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : '';
+  const typing = tag === 'input' || tag === 'textarea';
 
-  if(f === 'png'){
-    const l = document.createElement('a');
-    l.download = 'lab.png';
-    l.href = stage.toDataURL();
-    l.click();
-  }else{
-    const doc = new jspdf.jsPDF('l', 'px', [stage.width(), stage.height()]);
-    doc.addImage(stage.toDataURL(), 'PNG', 0, 0, stage.width(), stage.height());
-    doc.save('lab.pdf');
+  if(e.key === 'Escape'){
+    clearSelection();
+    return;
   }
-}
 
-/* ---------------------------
- * Boot
- * --------------------------- */
+  if(!typing && (e.key === 'Delete' || e.key === 'Backspace')){
+    deleteSelected();
+    e.preventDefault();
+    return;
+  }
+
+  if(!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a'){
+    // select all devices/zones
+    const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
+    selectedNodes = groups;
+    selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
+    applyTransformer();
+    renderInspector();
+    e.preventDefault();
+  }
+});
+
+/* ===========================
+ * Resize
+ * =========================== */
 window.addEventListener('resize', () => {
   stage.width(window.innerWidth - 580);
   stage.height(window.innerHeight);
+
+  drawGrid();
   layer.draw();
+
   if(is3DVisible()) resize3D();
 });
 
-// load autosave on startup
+/* ===========================
+ * Boot
+ * =========================== */
+drawGrid();
 tryLoadFromLocalStorage();
 </script>
 </body>
