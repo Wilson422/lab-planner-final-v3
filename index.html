@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LabCAD Web Pro - 實驗室規劃系統</title>
+    <!-- 圖形與 3D 引擎 -->
     <script src="https://unpkg.com/konva@9/konva.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -12,27 +13,38 @@
     <style>
         :root {
             --bg-dark: #0f172a; --bg-sidebar: #1e293b; --primary: #3b82f6; --accent: #10b981; --danger: #ef4444; --border: #334155; --text: #f1f5f9;
+            --input-bg: #0f172a;
         }
         body { margin: 0; font-family: 'Segoe UI', system-ui; background: var(--bg-dark); color: var(--text); overflow: hidden; }
-        .app { display: grid; grid-template-columns: 280px 1fr 280px; height: 100vh; }
+        .app { display: grid; grid-template-columns: 280px 1fr 300px; height: 100vh; }
+        
+        /* 側邊欄 */
         .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
         .sidebar-header { padding: 20px; background: #111827; font-weight: bold; border-bottom: 1px solid var(--border); }
         .tool-section { padding: 15px; border-bottom: 1px solid var(--border); }
         .tool-title { font-size: 0.75rem; color: #94a3b8; margin-bottom: 10px; text-transform: uppercase; }
         .item-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .item { background: #334155; padding: 10px; border-radius: 6px; cursor: pointer; text-align: center; font-size: 0.8rem; transition: 0.2s; }
-        .item:hover { background: #475569; }
+        .item:hover { background: #475569; border: 1px solid var(--primary); }
+
+        /* 畫布 */
         .canvas-area { position: relative; background: #f1f5f9; }
         #container { width: 100%; height: 100%; }
-        .toolbar { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.95); padding: 8px 20px; border-radius: 50px; display: flex; gap: 15px; z-index: 100; border: 1px solid var(--border); box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        .tool-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 5px; }
-        .tool-btn:hover { color: white; }
         #three-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; z-index: 60; background: #000; }
-        .inspector { background: var(--bg-sidebar); border-left: 1px solid var(--border); padding: 20px; }
-        .btn-action { color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 5px; }
-        .prop-row { margin-bottom: 12px; }
-        .prop-label { display: block; font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; }
-        input { width: 100%; background: #0f172a; border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px; }
+        
+        .toolbar { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.95); padding: 8px 20px; border-radius: 50px; display: flex; gap: 15px; z-index: 100; border: 1px solid var(--border); }
+        .tool-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; padding: 5px; }
+
+        /* 屬性編輯器 (參考原版 UI) */
+        .inspector { background: var(--bg-sidebar); border-left: 1px solid var(--border); padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+        .inspector h3 { font-size: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 10px; margin: 0; }
+        .prop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .prop-group { display: flex; flex-direction: column; gap: 5px; }
+        .prop-label { font-size: 0.75rem; color: #94a3b8; }
+        .prop-input { background: var(--input-bg); border: 1px solid var(--border); color: white; padding: 8px; border-radius: 4px; font-family: monospace; }
+        
+        .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .btn-action { color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 5px; }
     </style>
 </head>
 <body>
@@ -41,21 +53,22 @@
             <div class="sidebar-header"><i data-lucide="layout"></i> LabCAD Web Pro</div>
             <div class="tool-section">
                 <div class="tool-title">區域</div>
-                <div class="item" onclick="addZone('新規劃區域')"><i data-lucide="box-select"></i> 新增區域</div>
+                <div class="item" onclick="addZone('新規劃區域')">新增區域</div>
             </div>
             <div class="tool-section">
-                <div class="tool-title">設備</div>
+                <div class="tool-title">設備清單</div>
                 <div class="item-grid">
                     <div class="item" onclick="addDevice('實驗桌', 120, 60, 80, '#3b82f6')">實驗桌</div>
                     <div class="item" onclick="addDevice('排煙櫃', 100, 80, 200, '#ef4444')">排煙櫃</div>
                     <div class="item" onclick="addDevice('分析儀', 140, 80, 150, '#10b981')">分析儀</div>
-                    <div class="item" onclick="addDevice('離心機', 60, 60, 60, '#f59e0b')">離心機</div>
+                    <div class="item" onclick="addDevice('冰箱', 60, 60, 180, '#f59e0b')">冰箱</div>
                 </div>
             </div>
             <div style="margin-top:auto; padding:20px;">
                 <button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button>
             </div>
         </aside>
+
         <main class="canvas-area">
             <div class="toolbar">
                 <button class="tool-btn" onclick="exportImg('png')"><i data-lucide="image"></i></button>
@@ -65,20 +78,28 @@
             <div id="container"></div>
             <div id="three-container"></div>
         </main>
+
         <aside class="inspector">
-            <h3>屬性編輯</h3>
-            <div id="inspector-content"><p style="color:#64748b">請選擇物件</p></div>
+            <h3>屬性面板</h3>
+            <div id="inspector-content">
+                <p style="color:#64748b">請選擇畫布上的物件</p>
+            </div>
         </aside>
     </div>
 
     <script>
         lucide.createIcons();
-        const stage = new Konva.Stage({ container: 'container', width: window.innerWidth - 560, height: window.innerHeight });
+        // 2D 初始化
+        const stage = new Konva.Stage({ container: 'container', width: window.innerWidth - 580, height: window.innerHeight });
         const layer = new Konva.Layer();
         const gridLayer = new Konva.Layer();
         stage.add(gridLayer, layer);
 
-        const tr = new Konva.Transformer({ rotateAnchorOffset: 30, enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'] });
+        const tr = new Konva.Transformer({ 
+            rotateAnchorOffset: 30, 
+            enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
+            keepRatio: false
+        });
         layer.add(tr);
 
         let selectedNode = null;
@@ -96,13 +117,13 @@
         drawGrid();
 
         function addZone(name) {
-            const group = new Konva.Group({ x: 50, y: 50, draggable: true, name: 'zone' });
+            const group = new Konva.Group({ x: 100, y: 100, draggable: true, name: 'zone' });
             const rect = new Konva.Rect({ width: 300, height: 200, fill: 'rgba(59, 130, 246, 0.1)', stroke: '#3b82f6', dash: [10, 5], name: 'main-rect' });
             const title = new Konva.Text({ text: name, fontSize: 16, fill: '#3b82f6', padding: 10, name: 'title-text' });
-            const dim = new Konva.Text({ text: '300 x 200', fontSize: 11, fill: '#64748b', name: 'dim-label' });
+            const dim = new Konva.Text({ text: '', fontSize: 11, fill: '#64748b', name: 'dim-label' });
             group.add(rect, title, dim);
-            updateDimLabel(group);
-            group.on('dragmove transform', () => updateDimLabel(group));
+            updateNodeUI(group);
+            group.on('dragmove transform', () => updateNodeUI(group));
             bindEvents(group);
             layer.add(group);
             group.moveToBottom();
@@ -110,19 +131,19 @@
         }
 
         function addDevice(name, w, h, z, color) {
-            const group = new Konva.Group({ x: 100, y: 100, draggable: true, name: 'device', customData: { height3d: z } });
-            const rect = new Konva.Rect({ width: w, height: h, fill: color, stroke: '#1e293b', strokeWidth: 1, name: 'main-rect' });
+            const group = new Konva.Group({ x: 200, y: 200, draggable: true, name: 'device', customData: { height3d: z } });
+            const rect = new Konva.Rect({ width: w, height: h, fill: color, stroke: '#1e293b', name: 'main-rect' });
             const title = new Konva.Text({ text: name, fontSize: 12, fill: 'white', width: w, align: 'center', y: h/2-6, name: 'title-text' });
-            const dim = new Konva.Text({ text: `${w} x ${h}`, fontSize: 9, fill: 'white', opacity: 0.8, name: 'dim-label' });
+            const dim = new Konva.Text({ text: '', fontSize: 9, fill: 'white', opacity: 0.8, name: 'dim-label' });
             group.add(rect, title, dim);
-            updateDimLabel(group);
-            group.on('dragmove transform', () => updateDimLabel(group));
+            updateNodeUI(group);
+            group.on('dragmove transform', () => updateNodeUI(group));
             bindEvents(group);
             layer.add(group);
             layer.draw();
         }
 
-        function updateDimLabel(group) {
+        function updateNodeUI(group) {
             const rect = group.findOne('.main-rect');
             const dim = group.findOne('.dim-label');
             const w = Math.round(rect.width() * group.scaleX());
@@ -130,51 +151,94 @@
             dim.text(`${w} x ${h}`);
             dim.x(rect.width() - dim.width() - 5);
             dim.y(rect.height() - 15);
-            if(selectedNode === group) updateInspector(group);
+            if(selectedNode === group) updateInspector();
         }
 
         function bindEvents(node) {
             node.on('click tap', (e) => { e.cancelBubble = true; selectNode(node); });
-            node.on('dragmove', () => { node.x(Math.round(node.x()/20)*20); node.y(Math.round(node.y()/20)*20); });
+            node.on('dragmove', () => { 
+                node.x(Math.round(node.x()/20)*20); 
+                node.y(Math.round(node.y()/20)*20); 
+                updateInspector();
+            });
         }
 
-        function selectNode(node) { selectedNode = node; tr.nodes([node]); updateInspector(node); layer.draw(); }
+        function selectNode(node) { selectedNode = node; tr.nodes([node]); updateInspector(); layer.draw(); }
 
         stage.on('click tap', (e) => {
             if (e.target === stage) { tr.nodes([]); selectedNode = null; document.getElementById('inspector-content').innerHTML = '<p style="color:#64748b">請選擇物件</p>'; layer.draw(); }
         });
 
-        function updateInspector(node) {
+        function updateInspector() {
+            if(!selectedNode) return;
+            const node = selectedNode;
             const rect = node.findOne('.main-rect');
             const title = node.findOne('.title-text');
-            document.getElementById('inspector-content').innerHTML = `
-                <div class="prop-row"><label class="prop-label">名稱</label><input type="text" value="${title.text()}" oninput="updateProp('name', this.value)"></div>
-                <div class="prop-row"><label class="prop-label">高度 (3D)</label><input type="number" value="${node.attrs.customData?.height3d || 0}" oninput="updateProp('z', this.value)"></div>
+            const content = document.getElementById('inspector-content');
+            
+            const x = Math.round(node.x());
+            const y = Math.round(node.y());
+            const w = Math.round(rect.width() * node.scaleX());
+            const h = Math.round(rect.height() * node.scaleY());
+            const rot = Math.round(node.rotation());
+            const z = node.attrs.customData?.height3d || 0;
+
+            content.innerHTML = `
+                <div class="prop-row">
+                    <label class="prop-label">名稱</label>
+                    <input class="prop-input" type="text" value="${title.text()}" oninput="updateProp('name', this.value)">
+                </div>
+                <div class="prop-grid">
+                    <div class="prop-group"><label class="prop-label">X</label><input class="prop-input" type="number" value="${x}" oninput="updateProp('x', this.value)"></div>
+                    <div class="prop-group"><label class="prop-label">Y</label><input class="prop-input" type="number" value="${y}" oninput="updateProp('y', this.value)"></div>
+                    <div class="prop-group"><label class="prop-label">W (寬)</label><input class="prop-input" type="number" value="${w}" oninput="updateProp('w', this.value)"></div>
+                    <div class="prop-group"><label class="prop-label">H (長)</label><input class="prop-input" type="number" value="${h}" oninput="updateProp('h', this.value)"></div>
+                    <div class="prop-group"><label class="prop-label">旋轉 (°)</label><input class="prop-input" type="number" value="${rot}" oninput="updateProp('rot', this.value)"></div>
+                    <div class="prop-group"><label class="prop-label">高度 (3D)</label><input class="prop-input" type="number" value="${z}" oninput="updateProp('z', this.value)"></div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn-action" style="background:#475569" onclick="updateProp('rot', (parseInt(selectedNode.rotation())+90)%360)">旋轉 90°</button>
+                    <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除</button>
+                </div>
             `;
         }
+
         function updateProp(p, v) {
             if(!selectedNode) return;
             if(p === 'name') selectedNode.findOne('.title-text').text(v);
+            if(p === 'x') selectedNode.x(parseInt(v));
+            if(p === 'y') selectedNode.y(parseInt(v));
+            if(p === 'w') selectedNode.scaleX(parseInt(v) / selectedNode.findOne('.main-rect').width());
+            if(p === 'h') selectedNode.scaleY(parseInt(v) / selectedNode.findOne('.main-rect').height());
+            if(p === 'rot') selectedNode.rotation(parseInt(v));
             if(p === 'z') selectedNode.attrs.customData.height3d = parseInt(v);
+            updateNodeUI(selectedNode);
             layer.draw();
         }
 
         function deleteSelected() { if(selectedNode) { selectedNode.destroy(); tr.nodes([]); selectedNode = null; layer.draw(); } }
 
-        // 3D 引擎
+        // 3D 引擎 (Three.js)
         let sc, cam, rend, ctrl;
         function init3D() {
             const cont = document.getElementById('three-container');
-            sc = new THREE.Scene(); sc.background = new THREE.Color(0x111827);
-            cam = new THREE.PerspectiveCamera(50, cont.clientWidth/cont.clientHeight, 1, 10000);
+            // 重要：確保容器有寬高
+            const width = cont.clientWidth || (window.innerWidth - 580);
+            const height = cont.clientHeight || window.innerHeight;
+
+            sc = new THREE.Scene(); sc.background = new THREE.Color(0x0f172a);
+            cam = new THREE.PerspectiveCamera(50, width/height, 1, 10000);
             cam.position.set(1000, 1000, 1000);
+
             rend = new THREE.WebGLRenderer({ antialias: true });
-            rend.setSize(cont.clientWidth, cont.clientHeight);
+            rend.setSize(width, height);
+            rend.setPixelRatio(window.devicePixelRatio);
             cont.appendChild(rend.domElement);
+
             ctrl = new THREE.OrbitControls(cam, rend.domElement);
             sc.add(new THREE.AmbientLight(0xffffff, 0.8));
             const dl = new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(1, 1, 1); sc.add(dl);
-            sc.add(new THREE.GridHelper(5000, 50, 0x374151, 0x1f2937));
+            sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
         }
 
         function toggle3D() {
@@ -184,7 +248,11 @@
             if (!sc) init3D();
             if (c3d.style.display === 'none' || c3d.style.display === '') {
                 c3d.style.display = 'block'; c2d.style.display = 'none';
-                btn.innerText = '返回 2D 平面圖'; update3D(); animate3D();
+                btn.innerText = '返回 2D 平面圖'; 
+                // 強制重新調整 renderer 大小
+                const width = c3d.clientWidth; const height = c3d.clientHeight;
+                rend.setSize(width, height); cam.aspect = width/height; cam.updateProjectionMatrix();
+                update3D(); animate3D();
             } else {
                 c3d.style.display = 'none'; c2d.style.display = 'block';
                 btn.innerText = '查看 3D 預覽';
@@ -202,10 +270,14 @@
                 if (node.name() === 'device') {
                     const h = node.attrs.customData.height3d || 100;
                     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: rect.fill(), transparent:true, opacity:0.9 }));
-                    mesh.position.set(x, h/2, y); sc.add(mesh);
+                    mesh.position.set(x, h/2, y); 
+                    mesh.rotation.y = -THREE.MathUtils.degToRad(node.rotation());
+                    sc.add(mesh);
                 } else {
                     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent:true, opacity:0.2, side: THREE.DoubleSide }));
-                    mesh.rotation.x = -Math.PI/2; mesh.position.set(x, 1, y); sc.add(mesh);
+                    mesh.rotation.x = -Math.PI/2; 
+                    mesh.rotation.z = THREE.MathUtils.degToRad(node.rotation());
+                    mesh.position.set(x, 2, y); sc.add(mesh);
                 }
             });
         }
@@ -218,7 +290,10 @@
             else { const { jsPDF } = window.jspdf; const doc = new jsPDF('l','px',[stage.width(), stage.height()]); doc.addImage(stage.toDataURL(), 'PNG', 0,0, stage.width(), stage.height()); doc.save('lab.pdf'); }
         }
 
-        window.onresize = () => { stage.width(window.innerWidth-560); stage.height(window.innerHeight); drawGrid(); };
+        window.onresize = () => { 
+            stage.width(window.innerWidth-580); stage.height(window.innerHeight); drawGrid(); 
+            if(rend) { rend.setSize(document.getElementById('three-container').clientWidth, window.innerHeight); }
+        };
     </script>
 </body>
 </html>
