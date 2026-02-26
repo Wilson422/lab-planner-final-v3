@@ -47,7 +47,6 @@
       width:100%; margin-top:15px; display:flex; align-items:center; justify-content:center; gap:5px;
     }
 
-    /* Debug overlay (3D only) */
     #debug3d{
       position:absolute; right:10px; bottom:10px; z-index:200;
       background:rgba(15,23,42,.85); color:#e2e8f0; font-size:12px;
@@ -55,7 +54,6 @@
       border-radius:8px; display:none; white-space:pre;
     }
 
-    /* small toast */
     #toast{
       position:absolute; left:50%; bottom:18px; transform:translateX(-50%);
       background:rgba(15,23,42,.9); color:#e2e8f0; font-size:13px;
@@ -123,7 +121,6 @@
 
       <div class="tool-divider"></div>
 
-      <!-- Stage 1 -->
       <button class="tool-btn" onclick="exportDesignJSON()" title="匯出設計 JSON"><i data-lucide="download"></i></button>
       <button class="tool-btn" onclick="triggerImportJSON()" title="匯入設計 JSON"><i data-lucide="upload"></i></button>
       <input id="import-json-input" type="file" accept="application/json" style="display:none" />
@@ -131,7 +128,6 @@
 
       <div class="tool-divider"></div>
 
-      <!-- Stage 2 quick toggles -->
       <button class="tool-btn" onclick="toggleGrid()" title="顯示/隱藏格線"><i data-lucide="grid-3x3"></i></button>
       <button class="tool-btn" onclick="toggleSnap()" title="吸附格線"><i data-lucide="magnet"></i></button>
     </div>
@@ -177,18 +173,18 @@ const stage = new Konva.Stage({
   height: window.innerHeight
 });
 
-const gridLayer = new Konva.Layer(); // behind all nodes
-const layer = new Konva.Layer();     // main nodes
+const gridLayer = new Konva.Layer();
+const layer = new Konva.Layer();
 stage.add(gridLayer);
 stage.add(layer);
 
 const tr = new Konva.Transformer({ keepRatio: false });
 layer.add(tr);
 
-let selectedNodes = []; // multi-select
-let selectedNode = null; // kept for compatibility (single select use-cases)
+let selectedNodes = [];
+let selectedNode = null;
 
-/* ---- Stage 2: Grid / Snap ---- */
+/* ---- Grid / Snap ---- */
 const GRID_SIZE = 10;
 let gridVisible = true;
 let snapEnabled = true;
@@ -208,32 +204,21 @@ function snap(v){ return Math.round(v / GRID_SIZE) * GRID_SIZE; }
 
 function drawGrid(){
   gridLayer.destroyChildren();
-  if(!gridVisible){
-    gridLayer.draw();
-    return;
-  }
+  if(!gridVisible){ gridLayer.draw(); return; }
 
   const w = stage.width();
   const h = stage.height();
 
   for(let x=0; x<=w; x+=GRID_SIZE){
-    gridLayer.add(new Konva.Line({
-      points:[x,0,x,h],
-      stroke:'rgba(15, 23, 42, 0.08)',
-      strokeWidth:1
-    }));
+    gridLayer.add(new Konva.Line({ points:[x,0,x,h], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
   }
   for(let y=0; y<=h; y+=GRID_SIZE){
-    gridLayer.add(new Konva.Line({
-      points:[0,y,w,y],
-      stroke:'rgba(15, 23, 42, 0.08)',
-      strokeWidth:1
-    }));
+    gridLayer.add(new Konva.Line({ points:[0,y,w,y], stroke:'rgba(15,23,42,0.08)', strokeWidth:1 }));
   }
   gridLayer.draw();
 }
 
-/* ---- selection rectangle (marquee) ---- */
+/* ---- selection rectangle ---- */
 let selecting = false;
 let selectionRect;
 let startPos = null;
@@ -258,44 +243,23 @@ function addZone(name){ createNode('zone', name, 300, 200, 0, 'rgba(59, 130, 246
 function addDevice(name, w, h, z, color){ createNode('device', name, w, h, z, color, '#1e293b'); }
 
 function createNode(type, name, w, h, z, fill, stroke){
-  const group = new Konva.Group({
-    x: 100, y: 100, draggable: true, name: type,
-    customData: { height3d: z }
-  });
+  const group = new Konva.Group({ x: 100, y: 100, draggable: true, name: type, customData: { height3d: z } });
 
-  const rect = new Konva.Rect({
-    width: w, height: h, fill, stroke,
-    name: 'main-rect',
-    dash: type === 'zone' ? [10,5] : []
-  });
-
-  const title = new Konva.Text({
-    text: name, fontSize: 14, fill: stroke,
-    padding: 8, name: 'title-text'
-  });
-
-  const dim = new Konva.Text({
-    text: '', fontSize: 10, fill: stroke, name: 'dim-label'
-  });
+  const rect = new Konva.Rect({ width: w, height: h, fill, stroke, name: 'main-rect', dash: type === 'zone' ? [10,5] : [] });
+  const title = new Konva.Text({ text: name, fontSize: 14, fill: stroke, padding: 8, name: 'title-text' });
+  const dim = new Konva.Text({ text: '', fontSize: 10, fill: stroke, name: 'dim-label' });
 
   group.add(rect, title, dim);
   updateUI(group);
 
   group.on('dragmove', () => {
-    if(snapEnabled){
-      group.position({ x: snap(group.x()), y: snap(group.y()) });
-    }
+    if(snapEnabled) group.position({ x: snap(group.x()), y: snap(group.y()) });
     updateUI(group);
     scheduleAutosave();
   });
-
   group.on('dragend', () => scheduleAutosave());
 
-  group.on('transform', () => {
-    updateUI(group);
-    scheduleAutosave();
-  });
-
+  group.on('transform', () => { updateUI(group); scheduleAutosave(); });
   group.on('transformend', () => {
     if(snapEnabled) normalizeGroupToGrid(group);
     scheduleAutosave();
@@ -320,11 +284,9 @@ function createNode(type, name, w, h, z, fill, stroke){
 }
 
 function normalizeGroupToGrid(group){
-  // snap position
   group.x(snap(group.x()));
   group.y(snap(group.y()));
 
-  // snap size by converting back to absolute (w/h) and applying scale
   const rect = group.findOne('.main-rect');
   const absW = rect.width() * group.scaleX();
   const absH = rect.height() * group.scaleY();
@@ -335,7 +297,6 @@ function normalizeGroupToGrid(group){
   group.scaleX(targetW / rect.width());
   group.scaleY(targetH / rect.height());
 
-  // snap rotation to 1 degree if wanted; keep as-is for now
   layer.draw();
 }
 
@@ -352,11 +313,12 @@ function updateUI(group){
 }
 
 /* ===========================
- * Selection model (Stage 2)
+ * Selection model
  * =========================== */
 function applyTransformer(){
   tr.nodes(selectedNodes);
   layer.draw();
+  sync3DSelectionHighlight();
 }
 
 function clearSelection(){
@@ -364,7 +326,6 @@ function clearSelection(){
   selectedNode = null;
   applyTransformer();
   document.getElementById('inspector-content').innerText = '請選擇物件';
-  if(is3DVisible()) update3D();
 }
 
 function selectSingleNode(node){
@@ -372,7 +333,6 @@ function selectSingleNode(node){
   selectedNode = node;
   applyTransformer();
   renderInspector();
-  if(is3DVisible()) update3D();
 }
 
 function toggleSelectNode(node){
@@ -384,31 +344,26 @@ function toggleSelectNode(node){
 
   applyTransformer();
   renderInspector();
-  if(is3DVisible()) update3D();
 }
 
-/* click empty to clear (unless currently selecting marquee) */
 stage.on('click tap', (e) => {
   if(e.target === stage){
     clearSelection();
     layer.draw();
+    if(is3DVisible()) update3D();
   }
 });
 
-/* Marquee selection: left drag on empty canvas */
 stage.on('mousedown touchstart', (e) => {
-  if(is3DVisible()) return; // ignore when 3D visible
-
+  if(is3DVisible()) return;
   if(e.target !== stage) return;
-  if(e.evt && (e.evt.button !== undefined) && e.evt.button !== 0) return; // left only
+  if(e.evt && (e.evt.button !== undefined) && e.evt.button !== 0) return;
 
   selecting = true;
   startPos = stage.getPointerPosition();
   selectionRect.visible(true);
   selectionRect.position(startPos);
   selectionRect.size({ width: 0, height: 0 });
-
-  // do not clear immediately; allow additive with shift
   layer.draw();
 });
 
@@ -435,7 +390,6 @@ stage.on('mouseup touchend', (e) => {
 
   const box = selectionRect.getClientRect();
   const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
-
   const additive = e.evt && e.evt.shiftKey;
 
   const hits = groups.filter(g => Konva.Util.haveIntersection(box, g.getClientRect()));
@@ -449,7 +403,7 @@ stage.on('mouseup touchend', (e) => {
 });
 
 /* ===========================
- * Inspector rendering
+ * Inspector
  * =========================== */
 function renderInspector(){
   const container = document.getElementById('inspector-content');
@@ -506,7 +460,6 @@ function renderInspector(){
     return;
   }
 
-  // single selection (original)
   const n = selectedNodes[0];
   const r = n.findOne('.main-rect');
   const w = Math.round(r.width() * n.scaleX());
@@ -583,12 +536,9 @@ function updateProp(p, v){
 }
 
 /* ===========================
- * Stage 2: Align / Distribute
+ * Align / Distribute
  * =========================== */
-function getBounds(node){
-  // client rect includes transforms
-  return node.getClientRect({ skipTransform: false });
-}
+function getBounds(node){ return node.getClientRect({ skipTransform: false }); }
 
 function align(mode){
   if(selectedNodes.length < 2) return;
@@ -598,7 +548,6 @@ function align(mode){
   const maxX = Math.max(...bounds.map(b => b.x + b.width));
   const minY = Math.min(...bounds.map(b => b.y));
   const maxY = Math.max(...bounds.map(b => b.y + b.height));
-
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
@@ -612,10 +561,7 @@ function align(mode){
     if(mode === 'bottom') node.y(node.y() + (maxY - (b.y + b.height)));
     if(mode === 'centerY') node.y(node.y() + (centerY - (b.y + b.height/2)));
 
-    if(snapEnabled){
-      node.x(snap(node.x()));
-      node.y(snap(node.y()));
-    }
+    if(snapEnabled){ node.x(snap(node.x())); node.y(snap(node.y())); }
     updateUI(node);
   });
 
@@ -627,7 +573,6 @@ function align(mode){
 function distribute(axis){
   if(selectedNodes.length < 3) return;
 
-  // Sort by x or y
   const nodes = [...selectedNodes];
   if(axis === 'h') nodes.sort((a,b) => getBounds(a).x - getBounds(b).x);
   else nodes.sort((a,b) => getBounds(a).y - getBounds(b).y);
@@ -646,11 +591,9 @@ function distribute(axis){
       if(idx === 0) { cursor = firstB.x + b.width + gap; return; }
       if(idx === nodes.length - 1) return;
 
-      // move so that left equals cursor
       n.x(n.x() + (cursor - b.x));
       if(snapEnabled) n.x(snap(n.x()));
       updateUI(n);
-
       cursor += b.width + gap;
     });
   }else{
@@ -667,7 +610,6 @@ function distribute(axis){
       n.y(n.y() + (cursor - b.y));
       if(snapEnabled) n.y(snap(n.y()));
       updateUI(n);
-
       cursor += b.height + gap;
     });
   }
@@ -686,7 +628,7 @@ function normalizeSelectionToGrid(){
 }
 
 /* ===========================
- * Delete selection
+ * Delete / Export
  * =========================== */
 function deleteSelected(){
   if(selectedNodes.length === 0) return;
@@ -719,7 +661,7 @@ function exportImg(f){
 }
 
 /* ===========================
- * Stage 1: Save/Load design JSON
+ * Stage 1: Save/Load
  * =========================== */
 const STORAGE_KEY = 'labcad_design_v1';
 let autosaveTimer = null;
@@ -732,7 +674,6 @@ function scheduleAutosave(){
 function serializeNode(group){
   const r = group.findOne('.main-rect');
   const title = group.findOne('.title-text');
-
   const w = r.width() * group.scaleX();
   const h = r.height() * group.scaleY();
 
@@ -741,8 +682,7 @@ function serializeNode(group){
     name: title ? title.text() : '',
     x: group.x(),
     y: group.y(),
-    w,
-    h,
+    w, h,
     rot: group.rotation(),
     fill: r.fill(),
     stroke: r.stroke(),
@@ -757,7 +697,7 @@ function getDesignJSON(){
     .map(serializeNode);
 
   return {
-    version: 2,
+    version: 3,
     savedAt: new Date().toISOString(),
     stage: { width: stage.width(), height: stage.height() },
     ui: { gridVisible, snapEnabled, gridSize: GRID_SIZE },
@@ -778,11 +718,12 @@ function saveDesignToLocalStorage(){
 function resetDesign(alsoClearLocalStorage=false){
   const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
   groups.forEach(g => g.destroy());
-
-  // keep selectionRect but reset it too
   selectionRect.visible(false);
 
-  clearSelection();
+  selectedNodes = [];
+  selectedNode = null;
+  tr.nodes([]);
+  document.getElementById('inspector-content').innerText = '請選擇物件';
   layer.draw();
 
   if(alsoClearLocalStorage){
@@ -811,55 +752,22 @@ function loadDesignFromObject(design){
     const dash = Array.isArray(n.dash) ? n.dash : (type==='zone' ? [10,5] : []);
     const fill = n.fill || (type==='zone' ? 'rgba(59, 130, 246, 0.1)' : '#3b82f6');
 
-    const group = new Konva.Group({
-      x: Number(n.x) || 0,
-      y: Number(n.y) || 0,
-      draggable: true,
-      name: type,
-      customData: { height3d: safeInt(n.height3d, 0) }
-    });
-
-    const rect = new Konva.Rect({
-      width: Math.max(1, Number(n.w) || 10),
-      height: Math.max(1, Number(n.h) || 10),
-      fill,
-      stroke,
-      name: 'main-rect',
-      dash
-    });
-
-    const title = new Konva.Text({
-      text: n.name || '',
-      fontSize: 14,
-      fill: stroke,
-      padding: 8,
-      name: 'title-text'
-    });
-
-    const dim = new Konva.Text({
-      text: '',
-      fontSize: 10,
-      fill: stroke,
-      name: 'dim-label'
-    });
+    const group = new Konva.Group({ x: Number(n.x) || 0, y: Number(n.y) || 0, draggable: true, name: type, customData: { height3d: safeInt(n.height3d, 0) } });
+    const rect = new Konva.Rect({ width: Math.max(1, Number(n.w) || 10), height: Math.max(1, Number(n.h) || 10), fill, stroke, name: 'main-rect', dash });
+    const title = new Konva.Text({ text: n.name || '', fontSize: 14, fill: stroke, padding: 8, name: 'title-text' });
+    const dim = new Konva.Text({ text: '', fontSize: 10, fill: stroke, name: 'dim-label' });
 
     group.rotation(Number(n.rot) || 0);
-
     group.add(rect, title, dim);
     updateUI(group);
 
     group.on('dragmove', () => {
-      if(snapEnabled){
-        group.position({ x: snap(group.x()), y: snap(group.y()) });
-      }
+      if(snapEnabled) group.position({ x: snap(group.x()), y: snap(group.y()) });
       updateUI(group);
       scheduleAutosave();
     });
-
     group.on('dragend', () => scheduleAutosave());
-
     group.on('transform', () => { updateUI(group); scheduleAutosave(); });
-
     group.on('transformend', () => {
       if(snapEnabled) normalizeGroupToGrid(group);
       scheduleAutosave();
@@ -940,10 +848,19 @@ document.getElementById('import-json-input').addEventListener('change', (e) => {
 });
 
 /* ===========================
- * 3D Engine (stable)
+ * 3D Engine (Stage 3: shadows + highlight)
  * =========================== */
 let sc, cam, rend, ctrl;
 let objectsGroup;
+let groundMesh;
+let dirLight;
+
+/**
+ * 3D objects map
+ * key: nodeId (Konva._id)
+ * val: { root, mesh, edges, baseMaterial, highlightMaterial }
+ */
+const threeMap = new Map();
 
 function is3DVisible(){
   const c3d = document.getElementById('three-container');
@@ -981,6 +898,8 @@ function init3DIfNeeded(){
   rend = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   rend.setSize(w, h, false);
+  rend.shadowMap.enabled = true;
+  rend.shadowMap.type = THREE.PCFSoftShadowMap;
   c3d.appendChild(rend.domElement);
 
   ctrl = new THREE.OrbitControls(cam, rend.domElement);
@@ -989,11 +908,32 @@ function init3DIfNeeded(){
   ctrl.target.set(0, 0, 0);
   ctrl.update();
 
-  sc.add(new THREE.AmbientLight(0xffffff, 0.9));
-  const dl = new THREE.DirectionalLight(0xffffff, 0.6);
-  dl.position.set(1, 2, 1);
-  sc.add(dl);
+  // Lights
+  sc.add(new THREE.AmbientLight(0xffffff, 0.55));
 
+  dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  dirLight.position.set(1200, 1800, 900);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.near = 1;
+  dirLight.shadow.camera.far = 6000;
+  dirLight.shadow.camera.left = -2500;
+  dirLight.shadow.camera.right = 2500;
+  dirLight.shadow.camera.top = 2500;
+  dirLight.shadow.camera.bottom = -2500;
+  sc.add(dirLight);
+
+  // Ground
+  const groundGeo = new THREE.PlaneGeometry(8000, 8000);
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.95, metalness: 0.0 });
+  groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.position.y = 0;
+  groundMesh.receiveShadow = true;
+  sc.add(groundMesh);
+
+  // Helpers
   sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
   sc.add(new THREE.AxesHelper(200));
 
@@ -1048,44 +988,117 @@ function clearObjectsGroup(){
     child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
     objectsGroup.remove(child);
   }
+  threeMap.clear();
 }
 
+/* Build 3D objects and keep mapping for highlight */
 function update3D(){
   if(!sc) return;
 
-  if(objectsGroup) clearObjectsGroup();
+  clearObjectsGroup();
 
-  layer.getChildren()
-    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'))
-    .forEach(n => {
-      const r = n.findOne('.main-rect');
-      const w = r.width() * n.scaleX();
-      const d = r.height() * n.scaleY();
-      const x = (n.x() + w/2) - stage.width()/2;
-      const y = (n.y() + d/2) - stage.height()/2;
+  const groups = layer.getChildren()
+    .filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
 
-      if(n.name() === 'device'){
-        const h = n.attrs.customData?.height3d || 100;
-        const m = new THREE.Mesh(
-          new THREE.BoxGeometry(w, h, d),
-          new THREE.MeshPhongMaterial({ color: r.fill(), transparent: true, opacity: 0.9 })
-        );
-        m.position.set(x, h/2, y);
-        m.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
-        objectsGroup.add(m);
-      }else{
-        const m = new THREE.Mesh(
-          new THREE.PlaneGeometry(w, d),
-          new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent: true, opacity: 0.2, side: 2 })
-        );
-        m.rotation.x = -THREE.Math.PI / 2;
-        m.position.set(x, 1, y);
-        objectsGroup.add(m);
-      }
-    });
+  groups.forEach(n => {
+    const r = n.findOne('.main-rect');
+    const w = r.width() * n.scaleX();
+    const d = r.height() * n.scaleY();
+    const x = (n.x() + w/2) - stage.width()/2;
+    const z = (n.y() + d/2) - stage.height()/2;
+
+    const id = n._id;
+
+    if(n.name() === 'device'){
+      const h = n.attrs.customData?.height3d || 100;
+
+      const baseMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(r.fill()),
+        roughness: 0.6,
+        metalness: 0.05
+      });
+
+      const hiMat = baseMat.clone();
+      hiMat.emissive = new THREE.Color(0x1d4ed8);
+      hiMat.emissiveIntensity = 0.35;
+
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), baseMat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(mesh.geometry),
+        new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.95 })
+      );
+      edges.visible = false;
+
+      const root = new THREE.Group();
+      root.add(mesh);
+      root.add(edges);
+
+      root.position.set(x, h/2, z);
+      root.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
+
+      objectsGroup.add(root);
+
+      threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, type: 'device' });
+    }else{
+      // zone as slightly raised plane to receive shadow subtly
+      const baseMat = new THREE.MeshStandardMaterial({
+        color: 0x3b82f6,
+        transparent: true,
+        opacity: 0.18,
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+      });
+
+      const hiMat = baseMat.clone();
+      hiMat.opacity = 0.28;
+      hiMat.emissive = new THREE.Color(0x1d4ed8);
+      hiMat.emissiveIntensity = 0.18;
+
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), baseMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x, 1, z);
+      mesh.receiveShadow = true;
+
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(mesh.geometry),
+        new THREE.LineBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.9 })
+      );
+      edges.rotation.copy(mesh.rotation);
+      edges.position.copy(mesh.position);
+      edges.visible = false;
+
+      const root = new THREE.Group();
+      root.add(mesh);
+      root.add(edges);
+
+      objectsGroup.add(root);
+
+      threeMap.set(id, { root, mesh, edges, baseMaterial: baseMat, highlightMaterial: hiMat, type: 'zone' });
+    }
+  });
 
   fitCameraToObjects();
+  sync3DSelectionHighlight();
   updateDebug3D();
+}
+
+function getSelectedIds(){
+  return new Set(selectedNodes.map(n => n._id));
+}
+
+/* Highlight in 3D based on current 2D selection */
+function sync3DSelectionHighlight(){
+  if(!sc || !objectsGroup) return;
+  const sel = getSelectedIds();
+  threeMap.forEach((obj, id) => {
+    const selected = sel.has(id);
+    obj.mesh.material = selected ? obj.highlightMaterial : obj.baseMaterial;
+    obj.edges.visible = selected;
+  });
 }
 
 function fitCameraToObjects(){
@@ -1102,12 +1115,12 @@ function fitCameraToObjects(){
   const maxDim = Math.max(size.x, size.y, size.z);
   const fov = cam.fov * (Math.PI / 180);
   let cameraDist = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-  cameraDist *= 1.5;
+  cameraDist *= 1.7;
 
-  const dir = new THREE.Vector3(1,1,1).normalize();
+  const dir = new THREE.Vector3(1, 1, 1).normalize();
   cam.position.copy(center.clone().add(dir.multiplyScalar(cameraDist)));
   cam.near = Math.max(1, cameraDist / 100);
-  cam.far = Math.max(10000, cameraDist * 10);
+  cam.far = Math.max(10000, cameraDist * 12);
   cam.updateProjectionMatrix();
 
   ctrl.update();
@@ -1125,23 +1138,27 @@ function updateDebug3D(){
   const debug = document.getElementById('debug3d');
   if(!debug || !is3DVisible()) return;
   const { w, h } = get3DSize();
-  const objCount = objectsGroup ? objectsGroup.children.length : 0;
   debug.textContent =
     `3D: ${w} x ${h}\n` +
-    `Objects: ${objCount}\n` +
+    `Objects: ${threeMap.size}\n` +
+    `Selected: ${selectedNodes.length}\n` +
     `Cam aspect: ${cam ? cam.aspect.toFixed(3) : '-'}\n`;
 }
 
 /* ===========================
- * Hotkeys (Stage 2)
+ * Hotkeys
  * =========================== */
 window.addEventListener('keydown', (e) => {
-  // avoid interfering with typing in inputs
   const tag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toLowerCase() : '';
   const typing = tag === 'input' || tag === 'textarea';
 
   if(e.key === 'Escape'){
-    clearSelection();
+    selectedNodes = [];
+    selectedNode = null;
+    tr.nodes([]);
+    renderInspector();
+    layer.draw();
+    sync3DSelectionHighlight();
     return;
   }
 
@@ -1152,7 +1169,6 @@ window.addEventListener('keydown', (e) => {
   }
 
   if(!typing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a'){
-    // select all devices/zones
     const groups = layer.getChildren().filter(n => n instanceof Konva.Group && (n.name()==='device' || n.name()==='zone'));
     selectedNodes = groups;
     selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
