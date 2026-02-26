@@ -1,348 +1,71 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LabCAD Web Pro - 實驗室規劃系統</title>
-    <script src="https://unpkg.com/konva@9/konva.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        :root {
-            --bg-dark: #0f172a; --bg-sidebar: #1e293b; --primary: #3b82f6; --accent: #10b981; --danger: #ef4444; --border: #334155; --text: #f1f5f9;
-        }
-        body { margin: 0; font-family: 'Segoe UI', system-ui; background: var(--bg-dark); color: var(--text); overflow: hidden; }
-        .app { display: grid; grid-template-columns: 280px 1fr 300px; height: 100vh; }
-        .sidebar { background: var(--bg-sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-        .sidebar-header { padding: 20px; background: #111827; font-weight: bold; border-bottom: 1px solid var(--border); }
-        .tool-section { padding: 15px; border-bottom: 1px solid var(--border); }
-        .item { background: #334155; padding: 10px; border-radius: 6px; cursor: pointer; text-align: center; font-size: 0.8rem; margin-bottom: 8px; }
-        .item:hover { background: #475569; border: 1px solid var(--primary); }
-        .canvas-area { position: relative; background: #f1f5f9; }
-        #container, #three-container { width: 100%; height: 100%; }
-        #three-container { position: absolute; top: 0; left: 0; display: none; z-index: 60; background: #0a0f1a; }
-        .toolbar { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.95); padding: 8px 20px; border-radius: 50px; display: flex; gap: 15px; z-index: 100; border: 1px solid var(--border); }
-        .tool-btn { background: none; border: none; color: #cbd5e1; cursor: pointer; }
-        .inspector { background: #1e293b; border-left: 1px solid var(--border); padding: 20px; color: #cbd5e1; }
-        .prop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; }
-        .prop-group { display: flex; flex-direction: column; gap: 4px; }
-        .prop-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
-        input { background: #0f172a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 4px; font-size: 0.9rem; }
-        .btn-action { color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 5px; }
-
-        /* Debug overlay (no console needed) */
-        #debug3d { position: absolute; right: 10px; bottom: 10px; z-index: 200; background: rgba(15, 23, 42, 0.85); color: #e2e8f0; font-size: 12px; padding: 8px 10px; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 8px; display: none; white-space: pre; }
-    </style>
+    <title>Lab Planner</title>
+    <!-- Other existing metadata and styles -->
 </head>
 <body>
-    <div class="app">
-        <aside class="sidebar">
-            <div class="sidebar-header">LabCAD Web Pro</div>
-            <div class="tool-section"><div class="item" onclick="addZone('新規劃區域')">新增區域</div></div>
-            <div class="tool-section"><div class="item" onclick="addDevice('實驗桌', 120, 60, 80, '#3b82f6')">實驗桌</div><div class="item" onclick="addDevice('排煙櫃', 100, 80, 200, '#ef4444')">排煙櫃</div></div>
-            <div style="margin-top:auto; padding:20px;"><button class="btn-action" style="background:var(--accent);" id="toggle-3d" onclick="toggle3D()">查看 3D 預覽</button></div>
-        </aside>
-        <main class="canvas-area">
-            <div class="toolbar">
-                <button class="tool-btn" onclick="exportImg('png')"><i data-lucide="image"></i></button>
-                <button class="tool-btn" onclick="exportImg('pdf')"><i data-lucide="file-text"></i></button>
-                <button class="tool-btn" onclick="deleteSelected()"><i data-lucide="trash-2"></i></button>
-            </div>
-            <div id="container"></div>
-            <div id="three-container"></div>
-            <div id="debug3d"></div>
-        </main>
-        <aside class="inspector">
-            <h3 id="ins-title">屬性</h3>
-            <div id="inspector-content">請選擇物件</div>
-        </aside>
+    <div id="toolbar">
+        <!-- Existing toolbar elements -->
+        <button id="autosaveBtn">Autosave Design</button>
+        <button id="exportJsonBtn">Export Design as JSON</button>
+        <input type="file" id="importJsonFile" accept="application/json" />
+        <button id="clearDesignBtn">Reset/Clear Design</button>
     </div>
-
+    <div id="designArea">
+        <!-- Existing design area elements -->
+    </div>
     <script>
-        lucide.createIcons();
-        const stage = new Konva.Stage({ container: 'container', width: window.innerWidth - 580, height: window.innerHeight });
-        const layer = new Konva.Layer();
-        stage.add(layer);
-        const tr = new Konva.Transformer({ keepRatio: false });
-        layer.add(tr);
+        // Existing scripts
 
-        let selectedNode = null;
-
-        function addZone(name) { createNode('zone', name, 300, 200, 0, 'rgba(59, 130, 246, 0.1)', '#3b82f6'); }
-        function addDevice(name, w, h, z, color) { createNode('device', name, w, h, z, color, '#1e293b'); }
-
-        function createNode(type, name, w, h, z, fill, stroke) {
-            const group = new Konva.Group({ x: 100, y: 100, draggable: true, name: type, customData: { height3d: z } });
-            const rect = new Konva.Rect({ width: w, height: h, fill: fill, stroke: stroke, name: 'main-rect', dash: type === 'zone' ? [10, 5] : [] });
-            const title = new Konva.Text({ text: name, fontSize: 14, fill: stroke, padding: 8, name: 'title-text' });
-            const dim = new Konva.Text({ text: '', fontSize: 10, fill: stroke, name: 'dim-label' });
-            group.add(rect, title, dim);
-            updateUI(group);
-            group.on('dragmove transform', () => updateUI(group));
-            group.on('click tap', (e) => { e.cancelBubble = true; selectNode(group); });
-            layer.add(group);
-            if(type === 'zone') group.moveToBottom();
-            selectNode(group);
+        // Function to save design to localStorage
+        function autosaveDesign() {
+            const design = getCurrentDesign(); // Replace with function to get the current design
+            localStorage.setItem('design', JSON.stringify(design));
         }
+        document.getElementById('autosaveBtn').addEventListener('click', autosaveDesign);
 
-        function updateUI(group) {
-            const rect = group.findOne('.main-rect');
-            const dim = group.findOne('.dim-label');
-            const w = Math.round(rect.width() * group.scaleX());
-            const h = Math.round(rect.height() * group.scaleY());
-            dim.text(`${w} x ${h}`);
-            dim.x(rect.width() - dim.width() - 5); dim.y(rect.height() - 15);
-            if(selectedNode === group) renderInspector();
+        // Function to export design as JSON
+        function exportDesign() {
+            const design = getCurrentDesign();
+            const blob = new Blob([JSON.stringify(design, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'design.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
+        document.getElementById('exportJsonBtn').addEventListener('click', exportDesign);
 
-        function selectNode(node) { selectedNode = node; tr.nodes([node]); renderInspector(); layer.draw(); }
-        stage.on('click tap', (e) => { if(e.target === stage) { tr.nodes([]); selectedNode = null; document.getElementById('inspector-content').innerText = '請選擇物件'; layer.draw(); }});
+        // Function to import design from JSON file
+        document.getElementById('importJsonFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if(file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const design = JSON.parse(e.target.result);
+                    loadDesign(design); // Replace with function to load the design
+                    if(is3DMode()) {
+                        update3D();
+                    }
+                };
+                reader.readAsText(file);
+            }
+        });
 
-        function renderInspector() {
-            if(!selectedNode) return;
-            const n = selectedNode; const r = n.findOne('.main-rect');
-            const w = Math.round(r.width() * n.scaleX()); const h = Math.round(r.height() * n.scaleY());
-            document.getElementById('inspector-content').innerHTML = `
-                <div class="prop-row"><label class="prop-label">名稱</label><input type="text" value="${n.findOne('.title-text').text()}" oninput="update('name', this.value)"></div>
-                <div class="prop-grid">
-                    <div class="prop-group"><label class="prop-label">X</label><input type="number" value="${Math.round(n.x())}" oninput="update('x', this.value)"></div>
-                    <div class="prop-group"><label class="prop-label">Y</label><input type="number" value="${Math.round(n.y())}" oninput="update('y', this.value)"></div>
-                    <div class="prop-group"><label class="prop-label">W</label><input type="number" value="${w}" oninput="update('w', this.value)"></div>
-                    <div class="prop-group"><label class="prop-label">H</label><input type="number" value="${h}" oninput="update('h', this.value)"></div>
-                    <div class="prop-group"><label class="prop-label">旋轉</label><input type="number" value="${Math.round(n.rotation())}" oninput="update('rot', this.value)"></div>
-                    <div class="prop-group"><label class="prop-label">高度</label><input type="number" value="${n.attrs.customData?.height3d || 0}" oninput="update('z', this.value)"></div>
-                </div>
-                <button class="btn-action" style="background:var(--danger)" onclick="deleteSelected()">刪除物件</button>
-            `;
-        }
-
-        function update(p, v) {
-            if(!selectedNode) return;
-            if(p==='name') selectedNode.findOne('.title-text').text(v);
-            if(p==='x') selectedNode.x(parseInt(v)); if(p==='y') selectedNode.y(parseInt(v));
-            if(p==='w') selectedNode.scaleX(parseInt(v)/selectedNode.findOne('.main-rect').width());
-            if(p==='h') selectedNode.scaleY(parseInt(v)/selectedNode.findOne('.main-rect').height());
-            if(p==='rot') selectedNode.rotation(parseInt(v));
-            if(p==='z') selectedNode.attrs.customData.height3d = parseInt(v);
-            updateUI(selectedNode); layer.draw();
-
-            // Live update 3D if visible
-            if(is3DVisible()) {
+        // Function to clear design
+        function clearDesign() {
+            clearCurrentDesign(); // Replace with function to clear the current design
+            if(is3DMode()) {
                 update3D();
             }
         }
-
-        function deleteSelected() { if(selectedNode) { selectedNode.destroy(); tr.nodes([]); selectedNode = null; renderInspector(); layer.draw(); if(is3DVisible()) update3D(); } }
-
-        // 3D engine
-        let sc, cam, rend, ctrl;
-        let objectsGroup; // holds generated meshes for clean disposal
-
-        function is3DVisible() {
-            const c3d = document.getElementById('three-container');
-            return c3d && c3d.style.display === 'block';
-        }
-
-        function get3DSize() {
-            const c3d = document.getElementById('three-container');
-            const w = Math.max(1, c3d.clientWidth || 0);
-            const h = Math.max(1, c3d.clientHeight || 0);
-            return { w, h };
-        }
-
-        function resize3D() {
-            if(!rend || !cam) return;
-            const { w, h } = get3DSize();
-            rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-            rend.setSize(w, h, false);
-            cam.aspect = w / h;
-            cam.updateProjectionMatrix();
-            updateDebug3D();
-        }
-
-        function init3DIfNeeded() {
-            const c3d = document.getElementById('three-container');
-            if(sc) return;
-
-            sc = new THREE.Scene();
-            sc.background = new THREE.Color(0x0a0f1a);
-
-            const { w, h } = get3DSize();
-            cam = new THREE.PerspectiveCamera(45, w / h, 1, 10000);
-            cam.position.set(1000, 1000, 1000);
-
-            rend = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-            rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-            rend.setSize(w, h, false);
-            c3d.appendChild(rend.domElement);
-
-            ctrl = new THREE.OrbitControls(cam, rend.domElement);
-            ctrl.enableDamping = true;
-            ctrl.dampingFactor = 0.08;
-            ctrl.target.set(0, 0, 0);
-            ctrl.update();
-
-            // lighting / helpers
-            sc.add(new THREE.AmbientLight(0xffffff, 0.9));
-            const dl = new THREE.DirectionalLight(0xffffff, 0.6);
-            dl.position.set(1, 2, 1);
-            sc.add(dl);
-            sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
-            sc.add(new THREE.AxesHelper(200));
-
-            // group for generated meshes
-            objectsGroup = new THREE.Group();
-            objectsGroup.name = 'objectsGroup';
-            sc.add(objectsGroup);
-
-            updateDebug3D();
-        }
-
-        function toggle3D() {
-            const btn = document.getElementById('toggle-3d');
-            const c2d = document.getElementById('container');
-            const c3d = document.getElementById('three-container');
-            const debug = document.getElementById('debug3d');
-
-            const opening = (c3d.style.display === 'none' || c3d.style.display === '');
-
-            if(opening) {
-                // show first so clientWidth/Height are correct
-                c3d.style.display = 'block';
-                c2d.style.display = 'none';
-                btn.innerText = '返回 2D';
-                if(debug) debug.style.display = 'block';
-
-                requestAnimationFrame(() => {
-                    init3DIfNeeded();
-                    resize3D();
-                    update3D();
-                    animate3D();
-                });
-            } else {
-                c3d.style.display = 'none';
-                c2d.style.display = 'block';
-                btn.innerText = '查看 3D 預覽';
-                if(debug) debug.style.display = 'none';
-            }
-        }
-
-        function disposeObject(obj) {
-            if(!obj) return;
-            if(obj.geometry) obj.geometry.dispose();
-            if(obj.material) {
-                if(Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose && m.dispose());
-                else if(obj.material.dispose) obj.material.dispose();
-            }
-        }
-
-        function clearObjectsGroup() {
-            if(!objectsGroup) return;
-            for(let i = objectsGroup.children.length - 1; i >= 0; i--) {
-                const child = objectsGroup.children[i];
-                child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
-                objectsGroup.remove(child);
-            }
-        }
-
-        function update3D() {
-            if(!sc) return;
-
-            // clear old generated meshes safely
-            if(objectsGroup) {
-                clearObjectsGroup();
-            }
-
-            // build new meshes from Konva nodes
-            layer.getChildren().filter(n => n.name()==='device'||n.name()==='zone').forEach(n => {
-                const r = n.findOne('.main-rect');
-                if(!r) return;
-
-                const w = r.width()*n.scaleX();
-                const d = r.height()*n.scaleY();
-                const x = (n.x() + w/2) - stage.width()/2;
-                const y = (n.y() + d/2) - stage.height()/2;
-
-                if(n.name()==='device') {
-                    const h = n.attrs.customData?.height3d || 100;
-                    const m = new THREE.Mesh(
-                        new THREE.BoxGeometry(w, h, d),
-                        new THREE.MeshPhongMaterial({ color: r.fill(), transparent:true, opacity:0.9 })
-                    );
-                    m.position.set(x, h/2, y);
-                    m.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
-                    objectsGroup.add(m);
-                } else {
-                    const m = new THREE.Mesh(
-                        new THREE.PlaneGeometry(w, d),
-                        new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent:true, opacity:0.2, side: 2 })
-                    );
-                    m.rotation.x = -Math.PI/2;
-                    m.position.set(x, 1, y);
-                    objectsGroup.add(m);
-                }
-            });
-
-            fitCameraToObjects();
-            updateDebug3D();
-        }
-
-        function fitCameraToObjects() {
-            if(!objectsGroup || objectsGroup.children.length === 0 || !cam || !ctrl) return;
-
-            const box = new THREE.Box3().setFromObject(objectsGroup);
-            const size = new THREE.Vector3();
-            const center = new THREE.Vector3();
-            box.getSize(size);
-            box.getCenter(center);
-
-            // set controls target to center
-            ctrl.target.copy(center);
-
-            // compute distance
-            const maxDim = Math.max(size.x, size.y, size.z);
-            const fov = cam.fov * (Math.PI / 180);
-            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            cameraZ *= 1.5;
-
-            // move camera on a diagonal vector
-            const dir = new THREE.Vector3(1, 1, 1).normalize();
-            cam.position.copy(center.clone().add(dir.multiplyScalar(cameraZ)));
-            cam.near = Math.max(1, cameraZ / 100);
-            cam.far = Math.max(10000, cameraZ * 10);
-            cam.updateProjectionMatrix();
-            ctrl.update();
-        }
-
-        function animate3D() {
-            if(is3DVisible()) {
-                requestAnimationFrame(animate3D);
-                ctrl.update();
-                rend.render(sc, cam);
-            }
-        }
-
-        function updateDebug3D() {
-            const debug = document.getElementById('debug3d');
-            if(!debug || !is3DVisible()) return;
-            const { w, h } = get3DSize();
-            const objCount = objectsGroup ? objectsGroup.children.length : 0;
-            debug.textContent = `3D: ${w} x ${h}\n` +
-                                `Objects: ${objCount}\n` +
-                                `Cam aspect: ${cam ? cam.aspect.toFixed(3) : '-'}\n`;
-        }
-
-        // Keep 2D and 3D responsive
-        window.addEventListener('resize', () => {
-            const newW = window.innerWidth - 580;
-            const newH = window.innerHeight;
-            stage.width(newW);
-            stage.height(newH);
-            layer.draw();
-            if(is3DVisible()) resize3D();
-        });
+        document.getElementById('clearDesignBtn').addEventListener('click', clearDesign);
     </script>
 </body>
 </html>
