@@ -31,6 +31,9 @@
         .prop-label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
         input { background: #0f172a; border: 1px solid #334155; color: white; padding: 8px; border-radius: 4px; font-size: 0.9rem; }
         .btn-action { color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+
+        /* Debug overlay (no console needed) */
+        #debug3d { position: absolute; right: 10px; bottom: 10px; z-index: 200; background: rgba(15, 23, 42, 0.85); color: #e2e8f0; font-size: 12px; padding: 8px 10px; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 8px; display: none; white-space: pre; }
     </style>
 </head>
 <body>
@@ -49,6 +52,7 @@
             </div>
             <div id="container"></div>
             <div id="three-container"></div>
+            <div id="debug3d"></div>
         </main>
         <aside class="inspector">
             <h3 id="ins-title">屬性</h3>
@@ -123,53 +127,222 @@
             if(p==='rot') selectedNode.rotation(parseInt(v));
             if(p==='z') selectedNode.attrs.customData.height3d = parseInt(v);
             updateUI(selectedNode); layer.draw();
+
+            // Live update 3D if visible
+            if(is3DVisible()) {
+                update3D();
+            }
         }
 
-        function deleteSelected() { if(selectedNode) { selectedNode.destroy(); tr.nodes([]); selectedNode = null; renderInspector(); layer.draw(); } }
+        function deleteSelected() { if(selectedNode) { selectedNode.destroy(); tr.nodes([]); selectedNode = null; renderInspector(); layer.draw(); if(is3DVisible()) update3D(); } }
 
-        // 3D 引擎
+        // 3D engine
         let sc, cam, rend, ctrl;
+        let objectsGroup; // holds generated meshes for clean disposal
+
+        function is3DVisible() {
+            const c3d = document.getElementById('three-container');
+            return c3d && c3d.style.display === 'block';
+        }
+
+        function get3DSize() {
+            const c3d = document.getElementById('three-container');
+            const w = Math.max(1, c3d.clientWidth || 0);
+            const h = Math.max(1, c3d.clientHeight || 0);
+            return { w, h };
+        }
+
+        function resize3D() {
+            if(!rend || !cam) return;
+            const { w, h } = get3DSize();
+            rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            rend.setSize(w, h, false);
+            cam.aspect = w / h;
+            cam.updateProjectionMatrix();
+            updateDebug3D();
+        }
+
+        function init3DIfNeeded() {
+            const c3d = document.getElementById('three-container');
+            if(sc) return;
+
+            sc = new THREE.Scene();
+            sc.background = new THREE.Color(0x0a0f1a);
+
+            const { w, h } = get3DSize();
+            cam = new THREE.PerspectiveCamera(45, w / h, 1, 10000);
+            cam.position.set(1000, 1000, 1000);
+
+            rend = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            rend.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            rend.setSize(w, h, false);
+            c3d.appendChild(rend.domElement);
+
+            ctrl = new THREE.OrbitControls(cam, rend.domElement);
+            ctrl.enableDamping = true;
+            ctrl.dampingFactor = 0.08;
+            ctrl.target.set(0, 0, 0);
+            ctrl.update();
+
+            // lighting / helpers
+            sc.add(new THREE.AmbientLight(0xffffff, 0.9));
+            const dl = new THREE.DirectionalLight(0xffffff, 0.6);
+            dl.position.set(1, 2, 1);
+            sc.add(dl);
+            sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
+            sc.add(new THREE.AxesHelper(200));
+
+            // group for generated meshes
+            objectsGroup = new THREE.Group();
+            objectsGroup.name = 'objectsGroup';
+            sc.add(objectsGroup);
+
+            updateDebug3D();
+        }
+
         function toggle3D() {
             const btn = document.getElementById('toggle-3d');
             const c2d = document.getElementById('container');
             const c3d = document.getElementById('three-container');
-            if(!sc) {
-                sc = new THREE.Scene(); sc.background = new THREE.Color(0x0a0f1a);
-                cam = new THREE.PerspectiveCamera(45, c3d.clientWidth/c3d.clientHeight, 1, 10000);
-                cam.position.set(1000, 1000, 1000);
-                rend = new THREE.WebGLRenderer({ antialias: true });
-                rend.setSize(c3d.clientWidth, c3d.clientHeight);
-                c3d.appendChild(rend.domElement);
-                ctrl = new THREE.OrbitControls(cam, rend.domElement);
-                sc.add(new THREE.AmbientLight(0xffffff, 1));
-                const dl = new THREE.DirectionalLight(0xffffff, 0.5); dl.position.set(1, 1, 1); sc.add(dl);
-                sc.add(new THREE.GridHelper(5000, 50, 0x334155, 0x1e293b));
+            const debug = document.getElementById('debug3d');
+
+            const opening = (c3d.style.display === 'none' || c3d.style.display === '');
+
+            if(opening) {
+                // show first so clientWidth/Height are correct
+                c3d.style.display = 'block';
+                c2d.style.display = 'none';
+                btn.innerText = '返回 2D';
+                if(debug) debug.style.display = 'block';
+
+                requestAnimationFrame(() => {
+                    init3DIfNeeded();
+                    resize3D();
+                    update3D();
+                    animate3D();
+                });
+            } else {
+                c3d.style.display = 'none';
+                c2d.style.display = 'block';
+                btn.innerText = '查看 3D 預覽';
+                if(debug) debug.style.display = 'none';
             }
-            if(c3d.style.display === 'none' || c3d.style.display === '') {
-                c3d.style.display = 'block'; c2d.style.display = 'none'; btn.innerText = '返回 2D';
-                rend.setSize(c3d.clientWidth, c3d.clientHeight);
-                update3D(); animate3D();
-            } else { c3d.style.display = 'none'; c2d.style.display = 'block'; btn.innerText = '查看 3D 預覽'; }
+        }
+
+        function disposeObject(obj) {
+            if(!obj) return;
+            if(obj.geometry) obj.geometry.dispose();
+            if(obj.material) {
+                if(Array.isArray(obj.material)) obj.material.forEach(m => m && m.dispose && m.dispose());
+                else if(obj.material.dispose) obj.material.dispose();
+            }
+        }
+
+        function clearObjectsGroup() {
+            if(!objectsGroup) return;
+            for(let i = objectsGroup.children.length - 1; i >= 0; i--) {
+                const child = objectsGroup.children[i];
+                child.traverse?.(n => { if(n.isMesh) disposeObject(n); });
+                objectsGroup.remove(child);
+            }
         }
 
         function update3D() {
-            while(sc.children.length > 3) sc.remove(sc.children[sc.children.length-1]);
+            if(!sc) return;
+
+            // clear old generated meshes safely
+            if(objectsGroup) {
+                clearObjectsGroup();
+            }
+
+            // build new meshes from Konva nodes
             layer.getChildren().filter(n => n.name()==='device'||n.name()==='zone').forEach(n => {
                 const r = n.findOne('.main-rect');
-                const w = r.width()*n.scaleX(); const d = r.height()*n.scaleY();
-                const x = (n.x() + w/2) - stage.width()/2; const y = (n.y() + d/2) - stage.height()/2;
+                if(!r) return;
+
+                const w = r.width()*n.scaleX();
+                const d = r.height()*n.scaleY();
+                const x = (n.x() + w/2) - stage.width()/2;
+                const y = (n.y() + d/2) - stage.height()/2;
+
                 if(n.name()==='device') {
-                    const h = n.attrs.customData.height3d || 100;
-                    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshPhongMaterial({ color: r.fill(), transparent:true, opacity:0.9 }));
-                    m.position.set(x, h/2, y); m.rotation.y = -THREE.MathUtils.degToRad(n.rotation()); sc.add(m);
+                    const h = n.attrs.customData?.height3d || 100;
+                    const m = new THREE.Mesh(
+                        new THREE.BoxGeometry(w, h, d),
+                        new THREE.MeshPhongMaterial({ color: r.fill(), transparent:true, opacity:0.9 })
+                    );
+                    m.position.set(x, h/2, y);
+                    m.rotation.y = -THREE.MathUtils.degToRad(n.rotation());
+                    objectsGroup.add(m);
                 } else {
-                    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent:true, opacity:0.2, side:2 }));
-                    m.rotation.x = -Math.PI/2; m.position.set(x, 1, y); sc.add(m);
+                    const m = new THREE.Mesh(
+                        new THREE.PlaneGeometry(w, d),
+                        new THREE.MeshBasicMaterial({ color: 0x3b82f6, transparent:true, opacity:0.2, side: 2 })
+                    );
+                    m.rotation.x = -Math.PI/2;
+                    m.position.set(x, 1, y);
+                    objectsGroup.add(m);
                 }
             });
+
+            fitCameraToObjects();
+            updateDebug3D();
         }
-        function animate3D() { if(document.getElementById('three-container').style.display === 'block') { requestAnimationFrame(animate3D); ctrl.update(); rend.render(sc, cam); } }
-        function exportImg(f) { tr.nodes([]); layer.draw(); if(f==='png') { const l = document.createElement('a'); l.download='lab.png'; l.href=stage.toDataURL(); l.click(); } else { const doc = new jspdf.jsPDF('l','px',[stage.width(), stage.height()]); doc.addImage(stage.toDataURL(), 'PNG', 0,0, stage.width(), stage.height()); doc.save('lab.pdf'); } }
+
+        function fitCameraToObjects() {
+            if(!objectsGroup || objectsGroup.children.length === 0 || !cam || !ctrl) return;
+
+            const box = new THREE.Box3().setFromObject(objectsGroup);
+            const size = new THREE.Vector3();
+            const center = new THREE.Vector3();
+            box.getSize(size);
+            box.getCenter(center);
+
+            // set controls target to center
+            ctrl.target.copy(center);
+
+            // compute distance
+            const maxDim = Math.max(size.x, size.y, size.z);
+            const fov = cam.fov * (Math.PI / 180);
+            let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+            cameraZ *= 1.5;
+
+            // move camera on a diagonal vector
+            const dir = new THREE.Vector3(1, 1, 1).normalize();
+            cam.position.copy(center.clone().add(dir.multiplyScalar(cameraZ)));
+            cam.near = Math.max(1, cameraZ / 100);
+            cam.far = Math.max(10000, cameraZ * 10);
+            cam.updateProjectionMatrix();
+            ctrl.update();
+        }
+
+        function animate3D() {
+            if(is3DVisible()) {
+                requestAnimationFrame(animate3D);
+                ctrl.update();
+                rend.render(sc, cam);
+            }
+        }
+
+        function updateDebug3D() {
+            const debug = document.getElementById('debug3d');
+            if(!debug || !is3DVisible()) return;
+            const { w, h } = get3DSize();
+            const objCount = objectsGroup ? objectsGroup.children.length : 0;
+            debug.textContent = `3D: ${w} x ${h}\n` +
+                                `Objects: ${objCount}\n` +
+                                `Cam aspect: ${cam ? cam.aspect.toFixed(3) : '-'}\n`;
+        }
+
+        // Keep 2D and 3D responsive
+        window.addEventListener('resize', () => {
+            const newW = window.innerWidth - 580;
+            const newH = window.innerHeight;
+            stage.width(newW);
+            stage.height(newH);
+            layer.draw();
+            if(is3DVisible()) resize3D();
+        });
     </script>
 </body>
 </html>
