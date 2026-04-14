@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Konva from 'konva';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { jsPDF } from 'jspdf';
 import './App.css';
 import { DEVICE_CATALOG, WALL_CATALOG, ZONE_CATALOG } from './catalog.js';
 import {
@@ -407,10 +406,14 @@ function App() {
   const exportPDF = useCallback(() => {
     const stage = scene2DRef.current.stage;
     if (!stage) return;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [stage.width(), stage.height()] });
-    pdf.addImage(stage.toDataURL({ pixelRatio: 2 }), 'PNG', 0, 0, stage.width(), stage.height());
-    pdf.save('lab-planner.pdf');
-    pushToast('已匯出 PDF');
+    import('jspdf').then(({ jsPDF }) => {
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [stage.width(), stage.height()] });
+      pdf.addImage(stage.toDataURL({ pixelRatio: 2 }), 'PNG', 0, 0, stage.width(), stage.height());
+      pdf.save('lab-planner.pdf');
+      pushToast('已匯出 PDF');
+    }).catch(() => {
+      pushToast('PDF 匯出失敗');
+    });
   }, [pushToast]);
 
   const exportJSON = useCallback(() => {
@@ -525,19 +528,6 @@ function App() {
     const gridLayer = new Konva.Layer();
     const warningLayer = new Konva.Layer();
     const mainLayer = new Konva.Layer();
-    const transformer = new Konva.Transformer({
-      keepRatio: false,
-      rotateEnabled: true,
-      enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center'],
-      anchorSize: 10,
-      borderStroke: '#0ea5e9',
-      borderStrokeWidth: 2,
-      anchorFill: '#e0f2fe',
-      anchorStroke: '#0369a1',
-      anchorCornerRadius: 5,
-      padding: 6,
-    });
-
     stage.add(gridLayer);
     stage.add(warningLayer);
     stage.add(mainLayer);
@@ -547,7 +537,7 @@ function App() {
       gridLayer,
       mainLayer,
       warningLayer,
-      transformer,
+      transformer: null,
       selectionRect: null,
       nodeMap: new Map(),
       marquee: { active: false, start: null },
@@ -627,8 +617,8 @@ function App() {
   }, [canvasSize.height, canvasSize.width]);
 
   useEffect(() => {
-    const { stage, gridLayer, mainLayer, warningLayer, transformer } = scene2DRef.current;
-    if (!stage || !gridLayer || !mainLayer || !warningLayer || !transformer) return;
+    const { stage, gridLayer, mainLayer, warningLayer } = scene2DRef.current;
+    if (!stage || !gridLayer || !mainLayer || !warningLayer) return;
 
     gridLayer.destroyChildren();
     if (design.ui.gridVisible) {
@@ -737,12 +727,26 @@ function App() {
       cornerRadius: 8,
     });
 
+    const transformer = new Konva.Transformer({
+      keepRatio: false,
+      rotateEnabled: true,
+      enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center'],
+      anchorSize: 10,
+      borderStroke: '#0ea5e9',
+      borderStrokeWidth: 2,
+      anchorFill: '#e0f2fe',
+      anchorStroke: '#0369a1',
+      anchorCornerRadius: 5,
+      padding: 6,
+    });
+
     mainLayer.add(selectionRect);
     mainLayer.add(transformer);
     transformer.nodes(selectedIds.map((id) => nodeMap.get(id)?.group).filter(Boolean));
 
     scene2DRef.current.nodeMap = nodeMap;
     scene2DRef.current.selectionRect = selectionRect;
+    scene2DRef.current.transformer = transformer;
     gridLayer.draw();
     warningLayer.draw();
     mainLayer.draw();
@@ -758,7 +762,7 @@ function App() {
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     threeHostRef.current.appendChild(renderer.domElement);
 
     const controls = new OrbitControls(camera, renderer.domElement);
