@@ -1,0 +1,32 @@
+{
+  "name": "lab-planner-final-v3",
+  "version": "1.0.0",
+  "description": "",
+  "main": "vite.config.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wilson422/lab-planner-final-v3.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Wilson422/lab-planner-final-v3/issues"
+  },
+  "homepage": "https://github.com/Wilson422/lab-planner-final-v3#readme",
+  "dependencies": {
+    "jspdf": "^4.2.1",
+    "konva": "^10.2.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.8"
+  }
+}
