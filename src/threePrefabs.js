@@ -28,19 +28,22 @@ function makeRoundedBoxGeo(width, height, depth, radius, smoothSteps = 5) {
   return geo;
 }
 
+function emissiveMaterial(baseHex, emissiveHex, intensity = 0.75) {
+  const mat = new THREE.MeshStandardMaterial({ color: baseHex, roughness: 0.42, metalness: 0.05 });
+  mat.emissive = new THREE.Color(emissiveHex);
+  mat.emissiveIntensity = intensity;
+  return mat;
+}
+
 const MATERIALS = {
-  body: new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.82, metalness: 0.02 }),
-  bodyAlt: new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.84, metalness: 0.02 }),
-  base: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.92, metalness: 0.08 }),
+  body: new THREE.MeshStandardMaterial({ color: 0xf0f4f8, roughness: 0.75, metalness: 0.04 }),
+  bodyAlt: new THREE.MeshStandardMaterial({ color: 0xd8e0ea, roughness: 0.78, metalness: 0.04 }),
+  base: new THREE.MeshStandardMaterial({ color: 0x2d3a4a, roughness: 0.88, metalness: 0.12 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.96, metalness: 0.02 }),
-  metal: new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.28, metalness: 0.76 }),
-  glass: new THREE.MeshStandardMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.18, roughness: 0.12, metalness: 0 }),
-  panel: (() => {
-    const material = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.05 });
-    material.emissive = new THREE.Color(0x60a5fa);
-    material.emissiveIntensity = 0.7;
-    return material;
-  })(),
+  metal: new THREE.MeshStandardMaterial({ color: 0xb8c4d0, roughness: 0.22, metalness: 0.82 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.22, roughness: 0.08, metalness: 0 }),
+  panel: emissiveMaterial(0x0c1a2e, 0x3b82f6, 0.85),
+  screen: emissiveMaterial(0x0c1a2e, 0x22d3ee, 0.6),
 };
 
 function accentMaterial(hex) {
@@ -200,6 +203,163 @@ function buildHood(width, depth, height, accent) {
   return { root, pickHeight: height + 46 };
 }
 
+function buildPCR(width, depth, height, accent) {
+  const root = new THREE.Group();
+  const baseH = height * 0.62;
+
+  const body = new THREE.Mesh(makeRoundedBoxGeo(width, baseH, depth, Math.min(18, width * 0.07), 5), MATERIALS.body);
+  body.position.set(0, baseH / 2, 0);
+  root.add(body);
+
+  const lid = new THREE.Mesh(makeRoundedBoxGeo(width * 0.88, height * 0.22, depth * 0.82, 12, 4), MATERIALS.bodyAlt);
+  lid.position.set(0, baseH + height * 0.11, 0);
+  root.add(lid);
+
+  const tube = new THREE.Mesh(makeRoundedBoxGeo(width * 0.52, height * 0.18, depth * 0.52, 8, 3), MATERIALS.dark);
+  tube.position.set(0, baseH - height * 0.06, 0);
+  root.add(tube);
+
+  addPanel(root, { x: width * 0.18, y: baseH * 0.62, z: depth / 2 + 12, width: width * 0.44, height: baseH * 0.34 });
+  addAccent(root, { x: -width * 0.2, y: baseH * 0.46, z: depth / 2 + 14, width: width * 0.26, height: 14, accent });
+  return { root, pickHeight: height };
+}
+
+function buildMicroscope(width, depth, height, accent) {
+  const root = new THREE.Group();
+
+  const base = new THREE.Mesh(makeRoundedBoxGeo(width * 0.88, height * 0.09, depth * 0.72, 12, 4), MATERIALS.base);
+  base.position.set(0, height * 0.045, 0);
+  root.add(base);
+
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.09, width * 0.11, height * 0.68, 14), MATERIALS.body);
+  column.position.set(-width * 0.14, height * 0.44, 0);
+  root.add(column);
+
+  const arm = new THREE.Mesh(makeRoundedBoxGeo(width * 0.52, height * 0.06, depth * 0.14, 8, 3), MATERIALS.bodyAlt);
+  arm.position.set(width * 0.06, height * 0.72, 0);
+  root.add(arm);
+
+  const nosepiece = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.09, width * 0.07, height * 0.12, 14), MATERIALS.dark);
+  nosepiece.position.set(width * 0.22, height * 0.62, 0);
+  root.add(nosepiece);
+
+  const eyepiece = new THREE.Mesh(new THREE.CylinderGeometry(width * 0.045, width * 0.055, height * 0.18, 12), MATERIALS.bodyAlt);
+  eyepiece.position.set(-width * 0.14, height * 0.82, 0);
+  eyepiece.rotation.z = Math.PI / 7;
+  root.add(eyepiece);
+
+  const stage = new THREE.Mesh(makeRoundedBoxGeo(width * 0.56, height * 0.04, depth * 0.44, 8, 3), MATERIALS.metal);
+  stage.position.set(width * 0.06, height * 0.44, 0);
+  root.add(stage);
+
+  addAccent(root, { x: -width * 0.14, y: height * 0.2, z: depth / 2 - depth * 0.08, width: width * 0.22, height: 14, accent });
+  return { root, pickHeight: height };
+}
+
+function buildAutoAnalyzer(width, depth, height, accent) {
+  const root = new THREE.Group();
+  const radius = Math.min(20, Math.min(width, depth) * 0.06);
+
+  const plinth = new THREE.Mesh(makeRoundedBoxGeo(width * 0.96, 44, depth * 0.96, 12, 3), MATERIALS.base);
+  plinth.position.set(0, 22, 0);
+  root.add(plinth);
+
+  const body = new THREE.Mesh(makeRoundedBoxGeo(width, height, depth, radius, 6), MATERIALS.body);
+  body.position.set(0, height / 2 + 44, 0);
+  root.add(body);
+
+  addPanel(root, { x: width * 0.08, y: height * 0.62 + 44, z: depth / 2 + 14, width: width * 0.6, height: height * 0.28 });
+
+  const slot = new THREE.Mesh(makeRoundedBoxGeo(width * 0.52, height * 0.16, 10, 10, 3), MATERIALS.screen);
+  slot.position.set(-width * 0.08, height * 0.34 + 44, depth / 2 + 8);
+  root.add(slot);
+
+  addAccent(root, { x: width * 0.24, y: height * 0.2 + 44, z: depth / 2 + 16, width: width * 0.28, height: 18, accent });
+  addHandle(root, { x: -width / 2 + 34, y: height * 0.5 + 44, z: depth / 2 + 16, length: height * 0.32 });
+  return { root, pickHeight: height + 44 };
+}
+
+function buildSpectrophotometer(width, depth, height, accent) {
+  const root = new THREE.Group();
+  const bodyH = height * 0.72;
+
+  const body = new THREE.Mesh(makeRoundedBoxGeo(width, bodyH, depth, Math.min(16, width * 0.07), 5), MATERIALS.body);
+  body.position.set(0, bodyH / 2, 0);
+  root.add(body);
+
+  const lidW = width * 0.42;
+  const lidD = depth * 0.48;
+  const lid = new THREE.Mesh(makeRoundedBoxGeo(lidW, height * 0.22, lidD, 10, 4), MATERIALS.bodyAlt);
+  lid.position.set(-width * 0.1, bodyH + height * 0.11, -depth * 0.06);
+  root.add(lid);
+
+  const well = new THREE.Mesh(makeRoundedBoxGeo(lidW * 0.6, height * 0.05, lidD * 0.6, 6, 3), MATERIALS.dark);
+  well.position.set(-width * 0.1, bodyH - height * 0.02, -depth * 0.06);
+  root.add(well);
+
+  addPanel(root, { x: width * 0.24, y: bodyH * 0.55, z: depth / 2 + 12, width: width * 0.42, height: bodyH * 0.36 });
+  addAccent(root, { x: -width * 0.2, y: bodyH * 0.34, z: depth / 2 + 12, width: width * 0.26, height: 13, accent });
+  return { root, pickHeight: height };
+}
+
+function buildAutomationTrack(width, depth, height, accent) {
+  const root = new THREE.Group();
+
+  const base = new THREE.Mesh(makeRoundedBoxGeo(width, height * 0.38, depth, 10, 4), MATERIALS.base);
+  base.position.set(0, height * 0.19, 0);
+  root.add(base);
+
+  const rail = new THREE.Mesh(makeRoundedBoxGeo(width * 0.96, height * 0.14, depth * 0.28, 6, 3), MATERIALS.metal);
+  rail.position.set(0, height * 0.38 + height * 0.07, 0);
+  root.add(rail);
+
+  const carrierSize = Math.min(depth * 0.7, height * 0.4);
+  [-width * 0.32, 0, width * 0.32].forEach((cx) => {
+    const carrier = new THREE.Mesh(makeRoundedBoxGeo(carrierSize, height * 0.3, carrierSize, 6, 3), MATERIALS.bodyAlt);
+    carrier.position.set(cx, height * 0.52 + height * 0.15, 0);
+    root.add(carrier);
+  });
+
+  const endCap = new THREE.Mesh(makeRoundedBoxGeo(depth * 0.9, height * 0.38, depth * 0.9, 8, 3), MATERIALS.body);
+  endCap.position.set(width / 2 + depth * 0.45, height * 0.19, 0);
+  root.add(endCap);
+
+  addPanel(root, { x: width / 2 + depth * 0.45, y: height * 0.24, z: depth / 2 + 12, width: depth * 0.64, height: height * 0.24 });
+  addAccent(root, { x: width * 0.38, y: height * 0.24, z: depth / 2 + 12, width: width * 0.16, height: 12, accent });
+  return { root, pickHeight: height };
+}
+
+function buildPureWater(width, depth, height, accent) {
+  const root = new THREE.Group();
+  const radius = Math.min(18, Math.min(width, depth) * 0.1);
+
+  const body = new THREE.Mesh(makeRoundedBoxGeo(width, height * 0.78, depth, radius, 5), MATERIALS.body);
+  body.position.set(0, height * 0.39, 0);
+  root.add(body);
+
+  const tank = new THREE.Mesh(makeRoundedBoxGeo(width * 0.68, height * 0.24, depth * 0.58, 10, 4), MATERIALS.glass);
+  tank.position.set(0, height * 0.78 + height * 0.12, 0);
+  root.add(tank);
+
+  const tankOuter = new THREE.Mesh(makeRoundedBoxGeo(width * 0.68, height * 0.24, depth * 0.58, 10, 4), MATERIALS.bodyAlt);
+  tankOuter.position.set(0, height * 0.78 + height * 0.12, 0);
+  root.add(tankOuter);
+  tankOuter.material = new THREE.MeshStandardMaterial({ color: 0xd0e8f5, roughness: 0.5, metalness: 0.06, transparent: true, opacity: 0.55 });
+
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 90, 10), MATERIALS.metal);
+  post.position.set(width * 0.3, height * 0.52, depth / 2 + 28);
+  root.add(post);
+
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 70, 10), MATERIALS.metal);
+  spout.rotation.z = Math.PI / 2;
+  spout.position.set(width * 0.3 + 44, height * 0.42, depth / 2 + 28);
+  root.add(spout);
+
+  addPanel(root, { x: 0, y: height * 0.6, z: depth / 2 + 12, width: width * 0.54, height: height * 0.2 });
+  addAccent(root, { x: 0, y: height * 0.35, z: depth / 2 + 14, width: width * 0.38, height: 12, accent });
+  return { root, pickHeight: height + height * 0.24 };
+}
+
 function buildWall(width, depth, wallHeight) {
   const root = new THREE.Group();
   const mesh = new THREE.Mesh(
@@ -230,6 +390,18 @@ export function buildPrefab3D(node) {
       return buildSink(node.width, node.depth, node.height3d, node.accent);
     case 'hood':
       return buildHood(node.width, node.depth, node.height3d, node.accent);
+    case 'pcr_machine':
+      return buildPCR(node.width, node.depth, node.height3d, node.accent);
+    case 'microscope':
+      return buildMicroscope(node.width, node.depth, node.height3d, node.accent);
+    case 'auto_analyzer':
+      return buildAutoAnalyzer(node.width, node.depth, node.height3d, node.accent);
+    case 'spectrophotometer':
+      return buildSpectrophotometer(node.width, node.depth, node.height3d, node.accent);
+    case 'automation_track':
+      return buildAutomationTrack(node.width, node.depth, node.height3d, node.accent);
+    case 'pure_water':
+      return buildPureWater(node.width, node.depth, node.height3d, node.accent);
     default:
       return buildFridgeLike(node.width, node.depth, node.height3d, node.accent || '#60a5fa');
   }

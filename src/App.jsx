@@ -36,12 +36,18 @@ const TAB_OPTIONS = [
 
 const DEVICE_ICONS = {
   centrifuge: '⚙️',
+  pcr_machine: '🧬',
+  microscope: '🔬',
+  auto_analyzer: '📊',
+  spectrophotometer: '🌈',
   incubator: '🌡️',
+  automation_track: '🔄',
+  pure_water: '💧',
   fridge: '❄️',
   ultra_low_freezer: '🧊',
   bench: '🧪',
-  hood: '🌬️',
-  sink: '💧',
+  hood: '💨',
+  sink: '🚿',
 };
 
 const TAB_COPY = {
@@ -294,6 +300,7 @@ function App() {
   const [is3DVisible, setIs3DVisible] = useState(false);
   const [toast, setToast] = useState('');
   const [infoCard, setInfoCard] = useState(null);
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const fileInputRef = useRef(null);
   const canvasPanelRef = useRef(null);
   const canvasHostRef = useRef(null);
@@ -770,10 +777,10 @@ function App() {
     controls.dampingFactor = 0.08;
     controls.target.set(0, 0, 0);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+    scene.add(new THREE.AmbientLight(0xd0e8ff, 0.55));
 
-    const directional = new THREE.DirectionalLight(0xffffff, 0.88);
-    directional.position.set(1200, 1800, 900);
+    const directional = new THREE.DirectionalLight(0xffffff, 1.1);
+    directional.position.set(1400, 2000, 900);
     directional.castShadow = true;
     directional.shadow.mapSize.width = 2048;
     directional.shadow.mapSize.height = 2048;
@@ -784,6 +791,14 @@ function App() {
     directional.shadow.camera.top = 9000;
     directional.shadow.camera.bottom = -9000;
     scene.add(directional);
+
+    const fillLight = new THREE.DirectionalLight(0x7090ff, 0.35);
+    fillLight.position.set(-800, 600, -600);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.18);
+    rimLight.position.set(0, -400, 1200);
+    scene.add(rimLight);
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(20000, 20000),
@@ -969,36 +984,50 @@ function App() {
 
   const activeInfoNode = infoCard ? design.nodes.find((node) => node.id === infoCard.nodeId) : null;
 
+  const GROUP_LABELS = { instruments: '儀器設備', furniture: '家具設施' };
+
   const renderLibraryCards = () => {
     if (selectedTab === 'devices') {
+      const q = sidebarSearch.trim().toLowerCase();
+      const filtered = q
+        ? DEVICE_CATALOG.filter((item) => item.name.toLowerCase().includes(q) || item.subtitle.toLowerCase().includes(q))
+        : DEVICE_CATALOG;
+
+      const groups = [];
+      const seen = new Set();
+      filtered.forEach((item) => {
+        if (!seen.has(item.group)) { seen.add(item.group); groups.push(item.group); }
+      });
+
       return (
         <>
-          <div className="section-label">
-            <span>{TAB_COPY.devices.title}</span>
-            <span>{metrics.devices} 已放置</span>
-          </div>
-          <div className="library-grid">
-            {DEVICE_CATALOG.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className="library-card"
-                onClick={() => setPlacementMode({ kind: 'device', key: item.key, label: item.name })}
-              >
-                <div className="library-card__head">
-                  <div>
-                    <div className="library-card__name">{item.name}</div>
-                    <div className="library-card__sub">{item.subtitle}</div>
-                  </div>
-                  <div className="library-card__icon">{DEVICE_ICONS[item.key] || '🧪'}</div>
-                </div>
-                <div className="library-card__meta">
-                  <span className="pill">{item.widthMm}×{item.depthMm} mm</span>
-                  <span className="pill">高 {item.heightMm} mm</span>
-                </div>
-              </button>
-            ))}
-          </div>
+          {groups.map((group) => {
+            const groupPlacedCount = design.nodes.filter((node) => node.type === 'device' && filtered.some((item) => item.key === node.key && item.group === group)).length;
+            return (
+            <div key={group}>
+              <div className="group-label">{GROUP_LABELS[group] || group} <span>{groupPlacedCount} 已放置</span></div>
+              <div className="library-grid">
+                {filtered.filter((item) => item.group === group).map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`library-card${placementMode?.key === item.key ? ' library-card--active' : ''}`}
+                    onClick={() => setPlacementMode({ kind: 'device', key: item.key, label: item.name })}
+                  >
+                    <div className="library-card__head">
+                      <div className="library-card__icon">{DEVICE_ICONS[item.key] || '🧪'}</div>
+                      <div>
+                        <div className="library-card__name">{item.name}</div>
+                        <div className="library-card__sub">{item.widthMm}×{item.depthMm}mm</div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+            );
+          })}
+          {filtered.length === 0 && <div className="empty-search">找不到符合的元件</div>}
         </>
       );
     }
@@ -1006,28 +1035,21 @@ function App() {
     if (selectedTab === 'zones') {
       return (
         <>
-          <div className="section-label">
-            <span>{TAB_COPY.zones.title}</span>
-            <span>{metrics.zones} 已放置</span>
-          </div>
+          <div className="group-label">區域模板 <span>{metrics.zones} 已放置</span></div>
           <div className="library-grid">
             {ZONE_CATALOG.map((item) => (
               <button
                 key={item.key}
                 type="button"
-                className="library-card"
+                className={`library-card${placementMode?.key === item.key ? ' library-card--active' : ''}`}
                 onClick={() => setPlacementMode({ kind: 'zone', key: item.key, label: item.name })}
               >
                 <div className="library-card__head">
+                  <div className="library-card__icon" style={{ background: `${item.color}22`, color: item.color }}>▧</div>
                   <div>
                     <div className="library-card__name">{item.name}</div>
-                    <div className="library-card__sub">{item.subtitle}</div>
+                    <div className="library-card__sub">{item.widthMm}×{item.depthMm}mm</div>
                   </div>
-                  <div className="library-card__icon" style={{ background: `${item.color}18` }}>▧</div>
-                </div>
-                <div className="library-card__meta">
-                  <span className="pill">{item.widthMm}×{item.depthMm} mm</span>
-                  <span className="pill">流程分區</span>
                 </div>
               </button>
             ))}
@@ -1038,28 +1060,21 @@ function App() {
 
     return (
       <>
-        <div className="section-label">
-          <span>{TAB_COPY.walls.title}</span>
-          <span>{metrics.walls} 已放置</span>
-        </div>
+        <div className="group-label">牆體模組 <span>{metrics.walls} 已放置</span></div>
         <div className="library-grid">
           {WALL_CATALOG.map((item) => (
             <button
               key={item.key}
               type="button"
-              className="library-card"
+              className={`library-card${placementMode?.key === item.key ? ' library-card--active' : ''}`}
               onClick={() => setPlacementMode({ kind: 'wall', key: item.key, label: item.name })}
             >
               <div className="library-card__head">
+                <div className="library-card__icon">🧱</div>
                 <div>
                   <div className="library-card__name">{item.name}</div>
-                  <div className="library-card__sub">{item.subtitle}</div>
+                  <div className="library-card__sub">高 {item.heightMm}mm · 厚 {item.thicknessMm}mm</div>
                 </div>
-                <div className="library-card__icon">🧱</div>
-              </div>
-              <div className="library-card__meta">
-                <span className="pill">高 {item.heightMm} mm</span>
-                <span className="pill">厚 {item.thicknessMm} mm</span>
               </div>
             </button>
           ))}
@@ -1075,28 +1090,66 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar panel">
-        <div className="sidebar__hero">
-          <span className="app-badge">Lab Planner Pro · vNext</span>
-          <h1 className="sidebar__title">更像真實實驗室的配置體驗</h1>
-          <p className="sidebar__subtitle">
-            統一成單一 React/Vite 架構，保留 2D 與 3D 規劃、匯出、碰撞與安全距離，同時把畫面重做成較專業的規劃介面。
-          </p>
+      {/* ── Global top navigation bar ── */}
+      <header className="topnav">
+        <div className="topnav__brand">
+          <div className="brand-mark">L</div>
+          <span className="brand-name">ISO 15189 Lab Designer</span>
         </div>
 
-        <div className="metrics">
-          <div className="metric-card">
-            <div className="metric-card__label">設備</div>
-            <div className="metric-card__value">{metrics.devices}</div>
+        <div className="topnav__tools">
+          <button type="button" className="tn-btn" onClick={undo} disabled={!canUndo} title="撤銷 Ctrl+Z">↶</button>
+          <button type="button" className="tn-btn" onClick={redo} disabled={!canRedo} title="重做 Ctrl+Y">↷</button>
+          <button type="button" className="tn-btn" onClick={duplicateSelected} disabled={selectedIds.length === 0} title="複製 Ctrl+D">⧉</button>
+          <button type="button" className="tn-btn" onClick={deleteSelected} disabled={selectedIds.length === 0} title="刪除 Del">⌫</button>
+          <div className="tn-sep" />
+          <button
+            type="button"
+            className={`tn-btn${design.ui.gridVisible ? ' tn-btn--active' : ''}`}
+            onClick={() => commit((current) => ({ ...current, ui: { ...current.ui, gridVisible: !current.ui.gridVisible } }))}
+            title="格線"
+          >
+            #
+          </button>
+          <button
+            type="button"
+            className={`tn-btn${design.ui.snapEnabled ? ' tn-btn--active' : ''}`}
+            onClick={() => commit((current) => ({ ...current, ui: { ...current.ui, snapEnabled: !current.ui.snapEnabled } }))}
+            title="磁吸"
+          >
+            ⛶
+          </button>
+        </div>
+
+        <div className="topnav__actions">
+          <button type="button" className="tn-btn" onClick={exportPDF} title="匯出 PDF">匯出 PDF</button>
+          <button type="button" className="tn-btn" onClick={() => fileInputRef.current?.click()} title="匯入 JSON">儲存/載入</button>
+          <button
+            type="button"
+            className={`view-toggle-btn${is3DVisible ? ' view-toggle-btn--2d' : ''}`}
+            onClick={() => setIs3DVisible((current) => !current)}
+          >
+            {is3DVisible ? '◧ VIEW 2D' : '◨ VIEW 3D'}
+          </button>
+        </div>
+      </header>
+
+      {/* ── Left sidebar: component library ── */}
+      <aside className="sidebar panel">
+        <div className="sidebar__header">
+          <span className="sidebar__title">元件庫</span>
+          <div className="sidebar__metrics">
+            <span className="metric-chip">{metrics.devices} 設備</span>
+            <span className="metric-chip">{collisions.pairs.length > 0 ? `⚠ ${collisions.pairs.length}` : '✓ 安全'}</span>
           </div>
-          <div className="metric-card">
-            <div className="metric-card__label">區域</div>
-            <div className="metric-card__value">{metrics.zones}</div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-card__label">衝突</div>
-            <div className="metric-card__value">{collisions.pairs.length}</div>
-          </div>
+        </div>
+
+        <div className="sidebar__search">
+          <input
+            placeholder="搜尋元件名稱..."
+            value={sidebarSearch}
+            onChange={(event) => setSidebarSearch(event.target.value)}
+          />
         </div>
 
         <div className="tabs">
@@ -1105,7 +1158,7 @@ function App() {
               key={tab.key}
               type="button"
               className={`tab ${selectedTab === tab.key ? 'tab--active' : ''}`}
-              onClick={() => setSelectedTab(tab.key)}
+              onClick={() => { setSelectedTab(tab.key); setSidebarSearch(''); }}
             >
               {tab.label}
             </button>
@@ -1114,76 +1167,37 @@ function App() {
 
         <div className="library-panel">
           {renderLibraryCards()}
-          <div className="notice-card" style={{ marginTop: 16 }}>
-            <strong>操作提示</strong><br />
-            點選元件卡片後在畫布放置。Shift 可多選，Delete 可刪除，Ctrl/Cmd + Z/Y 可撤銷或重做。
-          </div>
         </div>
 
         <div className="placement-banner">
           {placementMode ? (
             <div className="notice-card">
               <strong>放置模式：</strong>{placementMode.label}<br />
-              直接點畫布放置，按 Esc 取消。
+              點畫布放置，Esc 取消。
             </div>
           ) : (
             <div className="notice-card">
-              <strong>{TAB_COPY[selectedTab].title}</strong><br />
-              {TAB_COPY[selectedTab].hint}
+              <strong>{TAB_COPY[selectedTab].hint}</strong>
             </div>
           )}
-          <button type="button" className="primary-button" onClick={() => setIs3DVisible((current) => !current)}>
-            {is3DVisible ? '返回 2D 規劃' : '查看 3D 預覽'}
-          </button>
         </div>
       </aside>
 
+      {/* ── Main canvas workspace ── */}
       <main className="workspace">
-        <div className="workspace__topbar">
-          <div className="workspace__title">
-            <h2>{is3DVisible ? '3D 實景預覽' : '2D 專業規劃畫布'}</h2>
-            <p>
-              {is3DVisible
-                ? '保留與 2D 相同的選取、衝突與材質資訊，方便快速檢視實際空間感。'
-                : '用格線、區域、牆體與安全淨距把實驗室配置拉回專業規劃流程。'}
-            </p>
-          </div>
-          <div className="pill">比例：1 格 = 100 mm</div>
-        </div>
-
         <div className="toolbar">
           <div className="toolbar__cluster">
-            <button type="button" className="icon-button" onClick={undo} disabled={!canUndo}>↶</button>
-            <button type="button" className="icon-button" onClick={redo} disabled={!canRedo}>↷</button>
-            <button type="button" className="icon-button" onClick={duplicateSelected} disabled={selectedIds.length === 0}>⧉</button>
-            <button type="button" className="icon-button" onClick={deleteSelected} disabled={selectedIds.length === 0}>⌫</button>
-          </div>
-
-          <div className="toolbar__cluster">
-            <button type="button" className="secondary-button" onClick={exportPNG}>匯出 PNG</button>
-            <button type="button" className="secondary-button" onClick={exportPDF}>匯出 PDF</button>
-            <button type="button" className="secondary-button" onClick={exportJSON}>匯出 JSON</button>
-            <button type="button" className="secondary-button" onClick={() => fileInputRef.current?.click()}>匯入 JSON</button>
+            <button type="button" className="icon-button" onClick={exportPNG} title="匯出 PNG">PNG</button>
+            <button type="button" className="icon-button" onClick={exportJSON} title="匯出 JSON">JSON</button>
           </div>
 
           <div className="toolbar__spacer" />
 
           <div className="toolbar__cluster">
-            <button
-              type="button"
-              className={`icon-button ${design.ui.gridVisible ? 'icon-button--active' : ''}`}
-              onClick={() => commit((current) => ({ ...current, ui: { ...current.ui, gridVisible: !current.ui.gridVisible } }))}
-            >
-              #
-            </button>
-            <button
-              type="button"
-              className={`icon-button ${design.ui.snapEnabled ? 'icon-button--active' : ''}`}
-              onClick={() => commit((current) => ({ ...current, ui: { ...current.ui, snapEnabled: !current.ui.snapEnabled } }))}
-            >
-              ⛶
-            </button>
             <button type="button" className="ghost-button" onClick={() => resetDesign(true)}>清空重置</button>
+            <div className="pill" style={{ fontSize: 11 }}>
+              {is3DVisible ? '3D 視角：拖曳旋轉 / 滾輪縮放' : `格線 ${design.ui.gridVisible ? '開啟' : '關閉'} · 吸附 ${design.ui.snapEnabled ? '開啟' : '關閉'}`}
+            </div>
           </div>
         </div>
 
@@ -1217,9 +1231,12 @@ function App() {
             </div>
           )}
 
-          <div className="scale-readout">
-            {is3DVisible ? '3D 視角：拖曳旋轉 / 滾輪縮放' : `格線 ${design.ui.gridVisible ? '開啟' : '關閉'} · 吸附 ${design.ui.snapEnabled ? '開啟' : '關閉'}`}
-          </div>
+          {is3DVisible && (
+            <div className="threed-banner">
+              <span className="threed-badge">3D ENGINE: HYBRID INTERACTION MODE STABLE</span>
+              <span className="threed-info">已啟用 3D 空間位移與穩定懸停</span>
+            </div>
+          )}
 
           {activeInfoNode && infoCard && is3DVisible && (
             <div
