@@ -28,6 +28,13 @@ function makeRoundedBoxGeo(width, height, depth, radius, smoothSteps = 5) {
   return geo;
 }
 
+function emissiveMaterial(baseHex, emissiveHex, intensity = 0.75) {
+  const mat = new THREE.MeshStandardMaterial({ color: baseHex, roughness: 0.42, metalness: 0.05 });
+  mat.emissive = new THREE.Color(emissiveHex);
+  mat.emissiveIntensity = intensity;
+  return mat;
+}
+
 const MATERIALS = {
   body: new THREE.MeshStandardMaterial({ color: 0xf0f4f8, roughness: 0.75, metalness: 0.04 }),
   bodyAlt: new THREE.MeshStandardMaterial({ color: 0xd8e0ea, roughness: 0.78, metalness: 0.04 }),
@@ -35,18 +42,8 @@ const MATERIALS = {
   dark: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.96, metalness: 0.02 }),
   metal: new THREE.MeshStandardMaterial({ color: 0xb8c4d0, roughness: 0.22, metalness: 0.82 }),
   glass: new THREE.MeshStandardMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.22, roughness: 0.08, metalness: 0 }),
-  panel: (() => {
-    const material = new THREE.MeshStandardMaterial({ color: 0x0c1a2e, roughness: 0.45, metalness: 0.06 });
-    material.emissive = new THREE.Color(0x3b82f6);
-    material.emissiveIntensity = 0.85;
-    return material;
-  })(),
-  screen: (() => {
-    const material = new THREE.MeshStandardMaterial({ color: 0x0c1a2e, roughness: 0.35, metalness: 0.06 });
-    material.emissive = new THREE.Color(0x22d3ee);
-    material.emissiveIntensity = 0.6;
-    return material;
-  })(),
+  panel: emissiveMaterial(0x0c1a2e, 0x3b82f6, 0.85),
+  screen: emissiveMaterial(0x0c1a2e, 0x22d3ee, 0.6),
 };
 
 function accentMaterial(hex) {

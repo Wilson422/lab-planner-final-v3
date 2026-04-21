@@ -1001,9 +1001,11 @@ function App() {
 
       return (
         <>
-          {groups.map((group) => (
+          {groups.map((group) => {
+            const groupPlacedCount = design.nodes.filter((node) => node.type === 'device' && filtered.some((item) => item.key === node.key && item.group === group)).length;
+            return (
             <div key={group}>
-              <div className="group-label">{GROUP_LABELS[group] || group} <span>{metrics.devices} 已放置</span></div>
+              <div className="group-label">{GROUP_LABELS[group] || group} <span>{groupPlacedCount} 已放置</span></div>
               <div className="library-grid">
                 {filtered.filter((item) => item.group === group).map((item) => (
                   <button
@@ -1023,7 +1025,8 @@ function App() {
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
           {filtered.length === 0 && <div className="empty-search">找不到符合的元件</div>}
         </>
       );
